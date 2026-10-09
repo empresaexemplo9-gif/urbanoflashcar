@@ -163,7 +163,8 @@ function setupMaps() {
 
 function initMapsUI() {
   maps.map = L.map('map', { zoomControl: true }).setView([-23.5558, -46.6396], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  // Host oficial exigido pela política de tiles do OSM (sem subdomínios {s}).
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; colaboradores do OpenStreetMap',
   }).addTo(maps.map);
@@ -209,13 +210,16 @@ function setupAutocomplete(target) {
   input.insertAdjacentElement('afterend', list);
 
   let timer;
+  let seq = 0; // descarta respostas de buscas antigas que chegam atrasadas
   input.addEventListener('input', () => {
     invalidatePlace(target); // texto mudou → coordenadas antigas não valem mais
     clearTimeout(timer);
     const q = input.value.trim();
     if (q.length < 3) { list.hidden = true; list.innerHTML = ''; return; }
+    const mySeq = ++seq;
     timer = setTimeout(async () => {
       const items = await photonSearch(q);
+      if (mySeq !== seq) return; // uma busca mais nova já foi disparada
       renderSuggestions(list, items, (item) => {
         setSearchValue(target, item.label);
         list.hidden = true;
@@ -223,7 +227,10 @@ function setupAutocomplete(target) {
       });
     }, 350);
   });
-  input.addEventListener('blur', () => setTimeout(() => { list.hidden = true; }, 180));
+  // Esconde a lista ao sair do campo, mas não quando o foco vai para a própria
+  // lista (permite ativar uma sugestão pelo teclado).
+  input.addEventListener('blur', () =>
+    setTimeout(() => { if (!list.contains(document.activeElement)) list.hidden = true; }, 180));
 }
 
 function renderSuggestions(list, items, onPick) {
@@ -234,7 +241,11 @@ function renderSuggestions(list, items, onPick) {
     el.type = 'button';
     el.className = 'ac-item';
     el.textContent = item.label;
-    el.addEventListener('mousedown', (e) => { e.preventDefault(); onPick(item); });
+    // 'click' fires for pointer AND keyboard (Enter/Space on a <button>), so
+    // keyboard-only users can select. mousedown only keeps input focus so the
+    // blur handler doesn't hide the list before the click lands.
+    el.addEventListener('mousedown', (e) => e.preventDefault());
+    el.addEventListener('click', () => onPick(item));
     list.appendChild(el);
   }
   list.hidden = false;
