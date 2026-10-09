@@ -673,6 +673,7 @@ function setupPwa() {
 // control we reload once to pick up the new shell.
 function setupAutoUpdate(reg) {
   let reloading = false;
+  let updateReady = false; // true only for a real update, never the first install
   const reloadOnce = () => {
     if (reloading) return;
     reloading = true;
@@ -680,22 +681,25 @@ function setupAutoUpdate(reg) {
   };
 
   // A new worker was found: when it finishes installing *and* a controller
-  // already exists (i.e. this is an update, not the first install), the new
-  // version is ready to take over.
+  // already exists, this is an update (not the first install). Only then do we
+  // arm the reload — on the very first install there is no controller yet, so
+  // the claim below must NOT reload the page.
   reg.addEventListener('updatefound', () => {
     const nw = reg.installing;
     if (!nw) return;
     nw.addEventListener('statechange', () => {
       if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+        updateReady = true;
         toast('Atualizando para a versão mais recente…', 'ok');
       }
     });
   });
 
   // The new worker took control (skipWaiting + clients.claim in sw.js): reload
-  // so the running page matches it. Guarded so the first install never loops.
+  // so the running page matches it — but only for a genuine update, so the
+  // first install never triggers a spurious reload.
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (navigator.serviceWorker.controller) reloadOnce();
+    if (updateReady) reloadOnce();
   });
 
   // Check for a new worker periodically and whenever the app regains focus, so
@@ -732,11 +736,17 @@ async function watchPlatformVersion() {
 }
 
 // --- Boot ---------------------------------------------------------------
+// Each setup step is isolated: a failure in one (e.g. the map library did not
+// load) must never stop the UI from rendering. render() always runs.
+function safe(fn) {
+  try { fn(); } catch (err) { console.error('[boot]', err); }
+}
+
 async function boot() {
-  setupPwa();
-  setupAuthTabs();
-  setupPresets();
-  setupMaps();
+  safe(setupPwa);
+  safe(setupAuthTabs);
+  safe(setupPresets);
+  safe(setupMaps);
   if (state.token) {
     try {
       const { user } = await api('/me');
@@ -746,7 +756,7 @@ async function boot() {
       localStorage.removeItem(TOKEN_KEY);
     }
   }
-  render();
+  try { render(); } catch (err) { console.error('[boot:render]', err); }
 }
 
 boot();
