@@ -11,12 +11,6 @@ export const config = {
   // Session lifetime in milliseconds (default 7 days).
   sessionTtlMs: Number(process.env.SESSION_TTL_MS) || 7 * 24 * 60 * 60 * 1000,
 
-  // Google Maps JavaScript API key (client-side, publishable). When set, the
-  // web UI shows a real map + address autocomplete; when empty it falls back
-  // to preset locations / manual coordinates. Restrict the key by HTTP referrer
-  // in the Google Cloud console.
-  mapsApiKey: process.env.GOOGLE_MAPS_API_KEY || process.env.UFC_MAPS_API_KEY || '',
-
   // Deterministic fare model (cents of R$). Tunable, but fixed per request so
   // estimates are reproducible and testable (P009).
   fare: {

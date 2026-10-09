@@ -47,9 +47,6 @@ export function createApp(db, config, { now } = {}) {
   // --- Health (P010) ---
   router.get('/api/health', () => ({ status: 'ok', time: (now?.() ?? new Date()).toISOString() }));
 
-  // --- Client config (public): the Maps key is a publishable, referrer-restricted key ---
-  router.get('/api/config', () => ({ mapsApiKey: config.mapsApiKey || '' }));
-
   // --- Auth (P003) ---
   router.post('/api/auth/register', (ctx) => json(201, { user: auth.register(ctx.body || {}) }));
   router.post('/api/auth/login', (ctx) => auth.login(ctx.body || {}));

@@ -6,7 +6,7 @@
 //     with a network update, and a navigation falls back to the cached shell
 //     when offline.
 
-const CACHE = 'ufc-shell-v4';
+const CACHE = 'ufc-shell-v5';
 const SHELL = [
   '/',
   '/index.html',

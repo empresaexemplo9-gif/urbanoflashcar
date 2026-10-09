@@ -64,8 +64,11 @@ function render() {
 
   if (authed) {
     $('#session-user').textContent = `${state.user.name} · ${state.user.role === 'driver' ? 'Motorista' : 'Passageiro'}`;
-    if (state.user.role === 'rider') loadRiderRides();
-    else { loadAvailable(); loadDriverRides(); }
+    if (state.user.role === 'rider') {
+      loadRiderRides();
+      // O mapa foi criado com a seção oculta; recalcula o tamanho ao exibir.
+      if (maps.ready && maps.map) setTimeout(() => maps.map.invalidateSize(), 60);
+    } else { loadAvailable(); loadDriverRides(); }
   }
 }
 
@@ -147,67 +150,35 @@ function setupPresets() {
   }
 }
 
-// --- Google Maps: localização real (mapa + autocomplete + geolocalização) ---
-const maps = { ready: false, map: null, markers: {}, geocoder: null };
+// --- Mapa gratuito e sem chave: Leaflet + OpenStreetMap + Photon ----------
+// Não exige API key nem cadastro: tiles do OpenStreetMap e geocodificação pelo
+// Photon (projeto OSM). Se o Leaflet/rede não carregar, cai no modo manual.
+const PHOTON = 'https://photon.komoot.io';
+const maps = { ready: false, map: null, markers: {} };
 
-async function setupMaps() {
-  let cfg;
-  try { cfg = await api('/config'); } catch { cfg = {}; }
-  if (!cfg || !cfg.mapsApiKey) return; // sem chave → modo presets/manual (maps-off)
-  try {
-    await loadGoogleMaps(cfg.mapsApiKey);
-    initMapsUI();
-  } catch { /* falha ao carregar → permanece no modo manual */ }
-}
-
-function loadGoogleMaps(key) {
-  return new Promise((resolve, reject) => {
-    if (window.google && window.google.maps) return resolve();
-    const cb = '__ufcMapsReady';
-    window[cb] = () => resolve();
-    const s = document.createElement('script');
-    s.src =
-      'https://maps.googleapis.com/maps/api/js?' +
-      `key=${encodeURIComponent(key)}&libraries=places&language=pt-BR&region=BR&loading=async&callback=${cb}`;
-    s.async = true;
-    s.onerror = () => reject(new Error('Falha ao carregar o Google Maps'));
-    document.head.appendChild(s);
-    setTimeout(() => reject(new Error('timeout')), 12000);
-  });
+function setupMaps() {
+  if (typeof L === 'undefined') return; // Leaflet não carregou → modo manual
+  try { initMapsUI(); } catch { /* falha → permanece no modo manual */ }
 }
 
 function initMapsUI() {
-  maps.ready = true;
-  maps.geocoder = new google.maps.Geocoder();
-  maps.map = new google.maps.Map($('#map'), {
-    center: { lat: -23.5558, lng: -46.6396 },
-    zoom: 12,
-    mapTypeControl: false,
-    streetViewControl: false,
-    fullscreenControl: false,
-  });
-  $('#ride-form').classList.replace('maps-off', 'maps-on');
+  maps.map = L.map('map', { zoomControl: true }).setView([-23.5558, -46.6396], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; colaboradores do OpenStreetMap',
+  }).addTo(maps.map);
 
-  for (const target of ['pickup', 'dropoff']) {
-    const input = $(`#${target}-search`);
-    const ac = new google.maps.places.Autocomplete(input, {
-      fields: ['geometry', 'name', 'formatted_address'],
-    });
-    ac.addListener('place_changed', () => {
-      const place = ac.getPlace();
-      if (!place.geometry) return;
-      const loc = place.geometry.location;
-      const label = place.formatted_address || place.name || input.value;
-      input.value = label;
-      mapsSetPlace(target, { label, lat: loc.lat(), lng: loc.lng() });
-    });
-    // If the user edits the text without picking a new suggestion, the saved
-    // coordinates no longer match what is shown — invalidate them so a stale
-    // location is never submitted. A fresh selection re-sets them.
-    input.addEventListener('input', () => {
-      if (input.value !== $(`[name="${target}-label"]`).value) invalidatePlace(target);
-    });
-  }
+  for (const target of ['pickup', 'dropoff']) setupAutocomplete(target);
+
+  // Clicar no mapa define o ponto que ainda falta (origem, depois destino).
+  maps.map.on('click', async (e) => {
+    const target = !maps.markers.pickup ? 'pickup' : !maps.markers.dropoff ? 'dropoff' : null;
+    if (!target) return;
+    const { lat, lng } = e.latlng;
+    const label = await reverseGeocode(lat, lng);
+    setSearchValue(target, label);
+    mapsSetPlace(target, { label, lat, lng });
+  });
 
   $('#geoloc-btn').addEventListener('click', () => {
     if (!navigator.geolocation) return toast('Geolocalização indisponível.', 'err');
@@ -215,11 +186,91 @@ function initMapsUI() {
       async (pos) => {
         const { latitude, longitude } = pos.coords;
         const label = await reverseGeocode(latitude, longitude);
-        const input = $('#pickup-search'); if (input) input.value = label;
+        setSearchValue('pickup', label);
         mapsSetPlace('pickup', { label, lat: latitude, lng: longitude });
       },
       () => toast('Não foi possível obter sua localização.', 'err'),
     );
+  });
+
+  maps.ready = true;
+  $('#ride-form').classList.replace('maps-off', 'maps-on');
+  setTimeout(() => maps.map.invalidateSize(), 0);
+}
+
+function setSearchValue(target, v) { const i = $(`#${target}-search`); if (i) i.value = v; }
+
+// Autocomplete de endereços reais via Photon (gratuito, baseado em OSM).
+function setupAutocomplete(target) {
+  const input = $(`#${target}-search`);
+  const list = document.createElement('div');
+  list.className = 'ac-list';
+  list.hidden = true;
+  input.insertAdjacentElement('afterend', list);
+
+  let timer;
+  input.addEventListener('input', () => {
+    invalidatePlace(target); // texto mudou → coordenadas antigas não valem mais
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 3) { list.hidden = true; list.innerHTML = ''; return; }
+    timer = setTimeout(async () => {
+      const items = await photonSearch(q);
+      renderSuggestions(list, items, (item) => {
+        setSearchValue(target, item.label);
+        list.hidden = true;
+        mapsSetPlace(target, item);
+      });
+    }, 350);
+  });
+  input.addEventListener('blur', () => setTimeout(() => { list.hidden = true; }, 180));
+}
+
+function renderSuggestions(list, items, onPick) {
+  list.innerHTML = '';
+  if (!items.length) { list.hidden = true; return; }
+  for (const item of items) {
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'ac-item';
+    el.textContent = item.label;
+    el.addEventListener('mousedown', (e) => { e.preventDefault(); onPick(item); });
+    list.appendChild(el);
+  }
+  list.hidden = false;
+}
+
+async function photonSearch(q) {
+  try {
+    const res = await fetch(`${PHOTON}/api?q=${encodeURIComponent(q)}&limit=5&lang=pt`);
+    const data = await res.json();
+    return (data.features || []).map(featureToPlace).filter(Boolean);
+  } catch { return []; }
+}
+
+function reverseGeocode(lat, lng) {
+  return fetch(`${PHOTON}/reverse?lat=${lat}&lon=${lng}&lang=pt`)
+    .then((r) => r.json())
+    .then((d) => (d.features && d.features[0] ? featureToPlace(d.features[0]).label : `${lat.toFixed(5)}, ${lng.toFixed(5)}`))
+    .catch(() => `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+}
+
+function featureToPlace(f) {
+  if (!f || !f.geometry) return null;
+  const [lng, lat] = f.geometry.coordinates;
+  const p = f.properties || {};
+  const street = p.street ? p.street + (p.housenumber ? ', ' + p.housenumber : '') : null;
+  const parts = [p.name, street, p.city || p.town || p.village || p.county, p.state].filter(Boolean);
+  const label = [...new Set(parts)].join(' · ') || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  return { label, lat, lng };
+}
+
+function markerIcon(letter) {
+  return L.divIcon({
+    className: 'pin',
+    html: `<span class="pin-dot">${letter}</span>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
   });
 }
 
@@ -228,21 +279,21 @@ function mapsSetPlace(target, place) {
   $(`[name="${target}-lat"]`).value = place.lat;
   $(`[name="${target}-lng"]`).value = place.lng;
   if (!maps.ready) return;
-  const pos = { lat: place.lat, lng: place.lng };
+  const pos = [place.lat, place.lng];
   if (maps.markers[target]) {
-    maps.markers[target].setPosition(pos);
+    maps.markers[target].setLatLng(pos);
   } else {
-    const marker = new google.maps.Marker({
-      map: maps.map, position: pos, draggable: true,
-      label: target === 'pickup' ? 'A' : 'B',
-    });
-    marker.addListener('dragend', async () => {
-      const p = marker.getPosition();
-      $(`[name="${target}-lat"]`).value = p.lat();
-      $(`[name="${target}-lng"]`).value = p.lng();
-      const label = await reverseGeocode(p.lat(), p.lng());
+    const marker = L.marker(pos, {
+      draggable: true,
+      icon: markerIcon(target === 'pickup' ? 'A' : 'B'),
+    }).addTo(maps.map);
+    marker.on('dragend', async () => {
+      const ll = marker.getLatLng();
+      $(`[name="${target}-lat"]`).value = ll.lat;
+      $(`[name="${target}-lng"]`).value = ll.lng;
+      const label = await reverseGeocode(ll.lat, ll.lng);
       $(`[name="${target}-label"]`).value = label;
-      const input = $(`#${target}-search`); if (input) input.value = label;
+      setSearchValue(target, label);
     });
     maps.markers[target] = marker;
   }
@@ -252,33 +303,22 @@ function mapsSetPlace(target, place) {
 function fitMarkers() {
   const ms = Object.values(maps.markers);
   if (!ms.length) return;
-  if (ms.length === 1) { maps.map.setCenter(ms[0].getPosition()); maps.map.setZoom(15); return; }
-  const bounds = new google.maps.LatLngBounds();
-  ms.forEach((m) => bounds.extend(m.getPosition()));
-  maps.map.fitBounds(bounds, 60);
-}
-
-function reverseGeocode(lat, lng) {
-  return new Promise((resolve) => {
-    if (!maps.geocoder) return resolve(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-    maps.geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-      resolve(status === 'OK' && results[0] ? results[0].formatted_address : `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-    });
-  });
+  if (ms.length === 1) { maps.map.setView(ms[0].getLatLng(), 15); return; }
+  maps.map.fitBounds(L.latLngBounds(ms.map((m) => m.getLatLng())).pad(0.25));
 }
 
 // Drop the saved coordinates + marker for one endpoint so a stale, no-longer-
-// matching location can't be submitted. The label text the user typed stays.
+// matching location can't be submitted. The typed label text stays.
 function invalidatePlace(target) {
   $(`[name="${target}-lat"]`).value = '';
   $(`[name="${target}-lng"]`).value = '';
-  if (maps.markers[target]) { maps.markers[target].setMap(null); delete maps.markers[target]; }
+  if (maps.markers[target]) { maps.map.removeLayer(maps.markers[target]); delete maps.markers[target]; }
 }
 
 function clearMaps() {
-  for (const t of Object.keys(maps.markers)) { maps.markers[t].setMap(null); delete maps.markers[t]; }
-  const ps = $('#pickup-search'); if (ps) ps.value = '';
-  const ds = $('#dropoff-search'); if (ds) ds.value = '';
+  if (!maps.ready) return;
+  for (const t of Object.keys(maps.markers)) { maps.map.removeLayer(maps.markers[t]); delete maps.markers[t]; }
+  setSearchValue('pickup', ''); setSearchValue('dropoff', '');
 }
 
 function readPlaces() {
