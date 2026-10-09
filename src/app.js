@@ -10,8 +10,11 @@ import { unauthorized, badRequest } from './lib/errors.js';
 import { createUsersRepo } from './repositories/users.js';
 import { createSessionsRepo } from './repositories/sessions.js';
 import { createRidesRepo } from './repositories/rides.js';
+import { createChargesRepo } from './repositories/charges.js';
 import { createAuthService } from './services/auth.js';
 import { createRidesService } from './services/rides.js';
+import { createBillingService } from './services/billing.js';
+import { createDeterministicGateway } from './lib/paymentGateway.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', 'public');
@@ -22,13 +25,20 @@ function bearer(req) {
   return m ? m[1].trim() : null;
 }
 
-export function createApp(db, config, { now } = {}) {
+export function createApp(db, config, { now, gateway } = {}) {
   const users = createUsersRepo(db);
   const sessions = createSessionsRepo(db);
   const rides = createRidesRepo(db);
+  const charges = createChargesRepo(db);
 
   const auth = createAuthService({ users, sessions, config, now });
-  const rideService = createRidesService({ rides, config, now });
+  const billing = createBillingService({
+    charges,
+    rides,
+    gateway: gateway ?? createDeterministicGateway(),
+    now,
+  });
+  const rideService = createRidesService({ rides, config, billing, now });
 
   const router = new Router();
 
@@ -76,12 +86,28 @@ export function createApp(db, config, { now } = {}) {
     return { ride: rideService.get(u, parseId(ctx)) };
   });
 
-  for (const action of ['accept', 'start', 'complete', 'cancel']) {
+  for (const action of ['accept', 'start', 'cancel']) {
     router.post(`/api/rides/:id/${action}`, (ctx) => {
       const u = requireUser(ctx);
       return { ride: rideService.transition(u, parseId(ctx), action) };
     });
   }
+
+  // Completing settles the fare and returns both the ride and the charge.
+  router.post('/api/rides/:id/complete', async (ctx) => {
+    const u = requireUser(ctx);
+    return rideService.complete(u, parseId(ctx));
+  });
+
+  // --- Billing / charges (P004) ---
+  router.get('/api/rides/:id/charge', (ctx) => {
+    const u = requireUser(ctx);
+    return { charge: billing.getForRide(u, parseId(ctx)) };
+  });
+  router.post('/api/rides/:id/charge/retry', async (ctx) => {
+    const u = requireUser(ctx);
+    return { charge: await billing.retry(u, parseId(ctx)) };
+  });
 
   router.serveStatic(PUBLIC_DIR);
 

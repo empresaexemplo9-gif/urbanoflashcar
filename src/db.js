@@ -42,9 +42,24 @@ CREATE TABLE IF NOT EXISTS rides (
   updated_at     TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS charges (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  ride_id          INTEGER NOT NULL UNIQUE REFERENCES rides(id) ON DELETE CASCADE,
+  rider_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  amount_cents     INTEGER NOT NULL,
+  status           TEXT NOT NULL CHECK (status IN ('pending', 'paid', 'failed')),
+  attempts         INTEGER NOT NULL DEFAULT 0,
+  idempotency_key  TEXT NOT NULL,
+  gateway_ref      TEXT,
+  last_error       TEXT,
+  created_at       TEXT NOT NULL,
+  updated_at       TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_rides_rider ON rides(rider_id);
 CREATE INDEX IF NOT EXISTS idx_rides_driver ON rides(driver_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_charges_ride ON charges(ride_id);
 `;
 
 export function openDatabase(file) {

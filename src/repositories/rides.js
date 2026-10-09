@@ -7,6 +7,13 @@ export function createRidesRepo(db) {
     dropoff_label, dropoff_lat, dropoff_lng, distance_km, duration_min,
     fare_cents, status, created_at, updated_at`;
 
+  // Same columns prefixed with the rides alias, plus a compact charge summary,
+  // for the list queries that join the charges table.
+  const listColumns = `r.id, r.rider_id, r.driver_id, r.pickup_label, r.pickup_lat,
+    r.pickup_lng, r.dropoff_label, r.dropoff_lat, r.dropoff_lng, r.distance_km,
+    r.duration_min, r.fare_cents, r.status, r.created_at, r.updated_at,
+    c.status AS charge_status, c.amount_cents AS charge_amount_cents`;
+
   return {
     create(ride) {
       const info = db
@@ -41,7 +48,10 @@ export function createRidesRepo(db) {
 
     listByRider(riderId) {
       return db
-        .prepare(`SELECT ${columns} FROM rides WHERE rider_id = ? ORDER BY created_at DESC, id DESC`)
+        .prepare(
+          `SELECT ${listColumns} FROM rides r LEFT JOIN charges c ON c.ride_id = r.id
+           WHERE r.rider_id = ? ORDER BY r.created_at DESC, r.id DESC`,
+        )
         .all(riderId);
     },
 
@@ -53,7 +63,10 @@ export function createRidesRepo(db) {
 
     listAssignedToDriver(driverId) {
       return db
-        .prepare(`SELECT ${columns} FROM rides WHERE driver_id = ? ORDER BY created_at DESC, id DESC`)
+        .prepare(
+          `SELECT ${listColumns} FROM rides r LEFT JOIN charges c ON c.ride_id = r.id
+           WHERE r.driver_id = ? ORDER BY r.created_at DESC, r.id DESC`,
+        )
         .all(driverId);
     },
 
