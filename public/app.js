@@ -147,6 +147,126 @@ function setupPresets() {
   }
 }
 
+// --- Google Maps: localização real (mapa + autocomplete + geolocalização) ---
+const maps = { ready: false, map: null, markers: {}, geocoder: null };
+
+async function setupMaps() {
+  let cfg;
+  try { cfg = await api('/config'); } catch { cfg = {}; }
+  if (!cfg || !cfg.mapsApiKey) return; // sem chave → modo presets/manual (maps-off)
+  try {
+    await loadGoogleMaps(cfg.mapsApiKey);
+    initMapsUI();
+  } catch { /* falha ao carregar → permanece no modo manual */ }
+}
+
+function loadGoogleMaps(key) {
+  return new Promise((resolve, reject) => {
+    if (window.google && window.google.maps) return resolve();
+    const cb = '__ufcMapsReady';
+    window[cb] = () => resolve();
+    const s = document.createElement('script');
+    s.src =
+      'https://maps.googleapis.com/maps/api/js?' +
+      `key=${encodeURIComponent(key)}&libraries=places&language=pt-BR&region=BR&loading=async&callback=${cb}`;
+    s.async = true;
+    s.onerror = () => reject(new Error('Falha ao carregar o Google Maps'));
+    document.head.appendChild(s);
+    setTimeout(() => reject(new Error('timeout')), 12000);
+  });
+}
+
+function initMapsUI() {
+  maps.ready = true;
+  maps.geocoder = new google.maps.Geocoder();
+  maps.map = new google.maps.Map($('#map'), {
+    center: { lat: -23.5558, lng: -46.6396 },
+    zoom: 12,
+    mapTypeControl: false,
+    streetViewControl: false,
+    fullscreenControl: false,
+  });
+  $('#ride-form').classList.replace('maps-off', 'maps-on');
+
+  for (const target of ['pickup', 'dropoff']) {
+    const input = $(`#${target}-search`);
+    const ac = new google.maps.places.Autocomplete(input, {
+      fields: ['geometry', 'name', 'formatted_address'],
+    });
+    ac.addListener('place_changed', () => {
+      const place = ac.getPlace();
+      if (!place.geometry) return;
+      const loc = place.geometry.location;
+      const label = place.formatted_address || place.name || input.value;
+      input.value = label;
+      mapsSetPlace(target, { label, lat: loc.lat(), lng: loc.lng() });
+    });
+  }
+
+  $('#geoloc-btn').addEventListener('click', () => {
+    if (!navigator.geolocation) return toast('Geolocalização indisponível.', 'err');
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        const label = await reverseGeocode(latitude, longitude);
+        const input = $('#pickup-search'); if (input) input.value = label;
+        mapsSetPlace('pickup', { label, lat: latitude, lng: longitude });
+      },
+      () => toast('Não foi possível obter sua localização.', 'err'),
+    );
+  });
+}
+
+function mapsSetPlace(target, place) {
+  $(`[name="${target}-label"]`).value = place.label;
+  $(`[name="${target}-lat"]`).value = place.lat;
+  $(`[name="${target}-lng"]`).value = place.lng;
+  if (!maps.ready) return;
+  const pos = { lat: place.lat, lng: place.lng };
+  if (maps.markers[target]) {
+    maps.markers[target].setPosition(pos);
+  } else {
+    const marker = new google.maps.Marker({
+      map: maps.map, position: pos, draggable: true,
+      label: target === 'pickup' ? 'A' : 'B',
+    });
+    marker.addListener('dragend', async () => {
+      const p = marker.getPosition();
+      $(`[name="${target}-lat"]`).value = p.lat();
+      $(`[name="${target}-lng"]`).value = p.lng();
+      const label = await reverseGeocode(p.lat(), p.lng());
+      $(`[name="${target}-label"]`).value = label;
+      const input = $(`#${target}-search`); if (input) input.value = label;
+    });
+    maps.markers[target] = marker;
+  }
+  fitMarkers();
+}
+
+function fitMarkers() {
+  const ms = Object.values(maps.markers);
+  if (!ms.length) return;
+  if (ms.length === 1) { maps.map.setCenter(ms[0].getPosition()); maps.map.setZoom(15); return; }
+  const bounds = new google.maps.LatLngBounds();
+  ms.forEach((m) => bounds.extend(m.getPosition()));
+  maps.map.fitBounds(bounds, 60);
+}
+
+function reverseGeocode(lat, lng) {
+  return new Promise((resolve) => {
+    if (!maps.geocoder) return resolve(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+    maps.geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+      resolve(status === 'OK' && results[0] ? results[0].formatted_address : `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+    });
+  });
+}
+
+function clearMaps() {
+  for (const t of Object.keys(maps.markers)) { maps.markers[t].setMap(null); delete maps.markers[t]; }
+  const ps = $('#pickup-search'); if (ps) ps.value = '';
+  const ds = $('#dropoff-search'); if (ds) ds.value = '';
+}
+
 function readPlaces() {
   const num = (n) => Number($(`[name="${n}"]`).value);
   return {
@@ -172,6 +292,7 @@ $('#ride-form').addEventListener('submit', async (e) => {
     toast('Corrida solicitada!', 'ok');
     $('#estimate-box').hidden = true;
     e.target.reset();
+    clearMaps();
     loadRiderRides();
   } catch (err) { toast(err.message, 'err'); }
 });
@@ -317,6 +438,7 @@ async function boot() {
   setupPwa();
   setupAuthTabs();
   setupPresets();
+  setupMaps();
   if (state.token) {
     try {
       const { user } = await api('/me');

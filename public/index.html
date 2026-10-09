@@ -67,27 +67,46 @@
       <section id="rider-view" class="grid" hidden>
         <div class="card">
           <h2>Solicitar corrida</h2>
-          <form id="ride-form" class="form" novalidate>
-            <div class="place">
+          <form id="ride-form" class="form maps-off" novalidate>
+            <!-- Mapa real (Google Maps) — exibido quando há chave configurada -->
+            <div id="map" class="map" aria-label="Mapa" role="application"></div>
+
+            <!-- Busca de endereços reais (Google Places Autocomplete) -->
+            <div class="maps-inputs">
               <label>Origem
-                <select name="pickup-preset" class="preset" data-target="pickup"></select>
+                <input type="text" id="pickup-search" class="addr" placeholder="Buscar endereço de origem" autocomplete="off" />
               </label>
-              <div class="coords">
-                <input type="text" name="pickup-label" placeholder="Nome do local" required />
-                <input type="number" step="any" name="pickup-lat" placeholder="lat" required />
-                <input type="number" step="any" name="pickup-lng" placeholder="lng" required />
-              </div>
-            </div>
-            <div class="place">
+              <button type="button" id="geoloc-btn" class="btn btn-ghost btn-sm">📍 Usar minha localização</button>
               <label>Destino
-                <select name="dropoff-preset" class="preset" data-target="dropoff"></select>
+                <input type="text" id="dropoff-search" class="addr" placeholder="Buscar endereço de destino" autocomplete="off" />
               </label>
-              <div class="coords">
-                <input type="text" name="dropoff-label" placeholder="Nome do local" required />
-                <input type="number" step="any" name="dropoff-lat" placeholder="lat" required />
-                <input type="number" step="any" name="dropoff-lng" placeholder="lng" required />
+            </div>
+
+            <!-- Fallback (sem chave do Maps): presets + coordenadas.
+                 Também é o armazenamento dos valores usados ao solicitar. -->
+            <div class="manual-inputs">
+              <div class="place">
+                <label>Origem
+                  <select name="pickup-preset" class="preset" data-target="pickup"></select>
+                </label>
+                <div class="coords">
+                  <input type="text" name="pickup-label" placeholder="Nome do local" />
+                  <input type="number" step="any" name="pickup-lat" placeholder="lat" />
+                  <input type="number" step="any" name="pickup-lng" placeholder="lng" />
+                </div>
+              </div>
+              <div class="place">
+                <label>Destino
+                  <select name="dropoff-preset" class="preset" data-target="dropoff"></select>
+                </label>
+                <div class="coords">
+                  <input type="text" name="dropoff-label" placeholder="Nome do local" />
+                  <input type="number" step="any" name="dropoff-lat" placeholder="lat" />
+                  <input type="number" step="any" name="dropoff-lng" placeholder="lng" />
+                </div>
               </div>
             </div>
+
             <div class="actions">
               <button type="button" id="estimate-btn" class="btn btn-ghost">Estimar</button>
               <button type="submit" class="btn btn-primary">Solicitar</button>

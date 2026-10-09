@@ -83,4 +83,6 @@ como hipóteses a validar — não foram marcados como concluídos.
 - Validar estados vazios, erros e permissões em sessão autorizada de produção.
 - Pagamento online no app (hoje é direto ao motorista por Pix/cartão físico):
   avaliar provedor, split e antifraude quando fizer sentido.
-- Geocoder/mapa real; hoje as coordenadas vêm de presets ou entrada manual.
+- Mapa/geocoder real: **integrado** via Google Maps (mapa + autocomplete +
+  geolocalização) quando `GOOGLE_MAPS_API_KEY` está definido; sem a chave, cai
+  para presets/coordenadas manuais. Falta a chave de produção (do responsável).
