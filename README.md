@@ -44,8 +44,25 @@ npm run dev         # com --watch
 ```
 
 Variáveis de ambiente úteis: `PORT`, `HOST`, `DATABASE_FILE`, `SESSION_TTL_MS`,
-e o modelo de tarifa (`FARE_BASE_CENTS`, `FARE_PER_KM_CENTS`,
-`FARE_PER_MIN_CENTS`, `FARE_MINIMUM_CENTS`, `FARE_AVG_SPEED_KMH`).
+`GOOGLE_MAPS_API_KEY` (localização real; veja abaixo), e o modelo de tarifa
+(`FARE_BASE_CENTS`, `FARE_PER_KM_CENTS`, `FARE_PER_MIN_CENTS`,
+`FARE_MINIMUM_CENTS`, `FARE_AVG_SPEED_KMH`).
+
+## Localização real (Google Maps)
+
+Defina `GOOGLE_MAPS_API_KEY` (ou `UFC_MAPS_API_KEY`) para ativar **mapa +
+autocomplete de endereços + "usar minha localização"** na tela de solicitar
+corrida. Sem a chave, o app cai no modo de **presets/coordenadas manuais**
+(tudo continua funcionando).
+
+```bash
+GOOGLE_MAPS_API_KEY="AIza..." npm start
+```
+
+A chave é do lado do cliente (servida em `GET /api/config`). No Google Cloud,
+habilite **Maps JavaScript API**, **Places API** e **Geocoding API**, e
+**restrinja a chave por referenciador HTTP** (seus domínios). No app de desktop,
+a chave é lida do ambiente em que o app é iniciado (`GOOGLE_MAPS_API_KEY`).
 
 ## Testar
 

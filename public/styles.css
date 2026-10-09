@@ -78,6 +78,14 @@ input:focus, select:focus, button:focus-visible {
 .radio { flex-direction: row; align-items: center; gap: 8px; color: var(--text); }
 .radio input { width: auto; }
 
+/* Google Maps integration */
+.map { height: 240px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 12px; overflow: hidden; background: var(--surface-2); }
+.maps-inputs { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+.addr { width: 100%; }
+.form.maps-off .map, .form.maps-off .maps-inputs { display: none; }
+.form.maps-on .manual-inputs { display: none; }
+.pac-container { z-index: 10000; } /* Google Places suggestions above the UI */
+
 .place { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
 .coords { display: grid; grid-template-columns: 1.6fr 1fr 1fr; gap: 8px; margin-top: 8px; }
 @media (max-width: 520px) { .coords { grid-template-columns: 1fr; } }
