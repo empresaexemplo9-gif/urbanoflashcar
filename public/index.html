@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UrbanoFlashCar</title>
+    <meta name="description" content="Plataforma própria de corridas urbanas." />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">⚡</span>
+        <span>UrbanoFlashCar</span>
+      </div>
+      <div id="session-box" class="session-box" hidden>
+        <span id="session-user" class="session-user"></span>
+        <button id="logout-btn" type="button" class="btn btn-ghost">Sair</button>
+      </div>
+    </header>
+
+    <main id="main" class="container">
+      <!-- Auth view -->
+      <section id="auth-view" class="card auth" aria-labelledby="auth-title">
+        <div class="tabs" role="tablist" aria-label="Entrar ou cadastrar">
+          <button id="tab-login" class="tab is-active" role="tab" aria-selected="true">Entrar</button>
+          <button id="tab-register" class="tab" role="tab" aria-selected="false">Criar conta</button>
+        </div>
+
+        <form id="login-form" class="form" novalidate>
+          <h1 id="auth-title" class="form-title">Entrar</h1>
+          <label>E-mail<input type="email" name="email" autocomplete="email" required /></label>
+          <label>Senha<input type="password" name="password" autocomplete="current-password" required /></label>
+          <button type="submit" class="btn btn-primary">Entrar</button>
+        </form>
+
+        <form id="register-form" class="form" hidden novalidate>
+          <h1 class="form-title">Criar conta</h1>
+          <label>Nome<input type="text" name="name" autocomplete="name" required minlength="2" /></label>
+          <label>E-mail<input type="email" name="email" autocomplete="email" required /></label>
+          <label>Senha (mín. 8)<input type="password" name="password" autocomplete="new-password" required minlength="8" /></label>
+          <fieldset class="roles">
+            <legend>Perfil</legend>
+            <label class="radio"><input type="radio" name="role" value="rider" checked /> Passageiro</label>
+            <label class="radio"><input type="radio" name="role" value="driver" /> Motorista</label>
+          </fieldset>
+          <button type="submit" class="btn btn-primary">Cadastrar</button>
+        </form>
+      </section>
+
+      <!-- Rider view -->
+      <section id="rider-view" class="grid" hidden>
+        <div class="card">
+          <h2>Solicitar corrida</h2>
+          <form id="ride-form" class="form" novalidate>
+            <div class="place">
+              <label>Origem
+                <select name="pickup-preset" class="preset" data-target="pickup"></select>
+              </label>
+              <div class="coords">
+                <input type="text" name="pickup-label" placeholder="Nome do local" required />
+                <input type="number" step="any" name="pickup-lat" placeholder="lat" required />
+                <input type="number" step="any" name="pickup-lng" placeholder="lng" required />
+              </div>
+            </div>
+            <div class="place">
+              <label>Destino
+                <select name="dropoff-preset" class="preset" data-target="dropoff"></select>
+              </label>
+              <div class="coords">
+                <input type="text" name="dropoff-label" placeholder="Nome do local" required />
+                <input type="number" step="any" name="dropoff-lat" placeholder="lat" required />
+                <input type="number" step="any" name="dropoff-lng" placeholder="lng" required />
+              </div>
+            </div>
+            <div class="actions">
+              <button type="button" id="estimate-btn" class="btn btn-ghost">Estimar</button>
+              <button type="submit" class="btn btn-primary">Solicitar</button>
+            </div>
+          </form>
+          <div id="estimate-box" class="estimate" hidden aria-live="polite"></div>
+        </div>
+
+        <div class="card">
+          <div class="list-head">
+            <h2>Minhas corridas</h2>
+            <button id="refresh-rides" type="button" class="btn btn-ghost">Atualizar</button>
+          </div>
+          <ul id="rides-list" class="rides" aria-live="polite"></ul>
+        </div>
+      </section>
+
+      <!-- Driver view -->
+      <section id="driver-view" class="grid" hidden>
+        <div class="card">
+          <div class="list-head">
+            <h2>Corridas disponíveis</h2>
+            <button id="refresh-available" type="button" class="btn btn-ghost">Atualizar</button>
+          </div>
+          <ul id="available-list" class="rides" aria-live="polite"></ul>
+        </div>
+        <div class="card">
+          <div class="list-head">
+            <h2>Minhas corridas</h2>
+            <button id="refresh-driver-rides" type="button" class="btn btn-ghost">Atualizar</button>
+          </div>
+          <ul id="driver-rides-list" class="rides" aria-live="polite"></ul>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="assertive" hidden></div>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

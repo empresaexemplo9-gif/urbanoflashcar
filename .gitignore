@@ -1,0 +1,12 @@
+# Dependencies (this project has none, but guard against accidental installs)
+node_modules/
+
+# Runtime data (SQLite database + WAL files)
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Logs & OS cruft
+*.log
+.DS_Store

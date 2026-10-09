@@ -1,0 +1,16 @@
+{
+  "name": "urbanoflashcar",
+  "version": "0.1.0",
+  "description": "UrbanoFlashCar — plataforma própria de corridas urbanas (MVP verificável).",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node --experimental-sqlite src/server.js",
+    "dev": "node --experimental-sqlite --watch src/server.js",
+    "test": "node --experimental-sqlite --test \"test/*.test.js\""
+  },
+  "license": "MIT"
+}
