@@ -680,20 +680,32 @@ function setupAutoUpdate(reg) {
     window.location.reload();
   };
 
-  // A new worker was found: when it finishes installing *and* a controller
-  // already exists, this is an update (not the first install). Only then do we
-  // arm the reload — on the very first install there is no controller yet, so
-  // the claim below must NOT reload the page.
-  reg.addEventListener('updatefound', () => {
-    const nw = reg.installing;
-    if (!nw) return;
-    nw.addEventListener('statechange', () => {
-      if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-        updateReady = true;
-        toast('Atualizando para a versão mais recente…', 'ok');
-      }
+  // Arm the reload. Only ever called when a controller already exists, so the
+  // very first install (no controller yet) never arms it. Idempotent.
+  const arm = () => {
+    if (updateReady) return;
+    updateReady = true;
+    toast('Atualizando para a versão mais recente…', 'ok');
+  };
+
+  // Watch one worker: if it is already installed with a controller present it
+  // is a ready update; otherwise wait for it to reach that state.
+  const track = (w) => {
+    if (!w) return;
+    if (w.state === 'installed' && navigator.serviceWorker.controller) { arm(); return; }
+    w.addEventListener('statechange', () => {
+      if (w.state === 'installed' && navigator.serviceWorker.controller) arm();
     });
-  });
+  };
+
+  // A worker already in flight when we attached (an update another tab or a
+  // background browser check discovered, whose `updatefound` already fired):
+  // pick it up directly, since the event won't fire again for it.
+  track(reg.waiting);
+  track(reg.installing);
+
+  // Future updates: a new worker starts installing.
+  reg.addEventListener('updatefound', () => track(reg.installing));
 
   // The new worker took control (skipWaiting + clients.claim in sw.js): reload
   // so the running page matches it — but only for a genuine update, so the
