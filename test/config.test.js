@@ -5,8 +5,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startTestServer } from './helpers.js';
 
-test('config endpoint returns an empty maps key by default', async () => {
-  const srv = await startTestServer();
+test('config endpoint returns an empty maps key when none is configured', async () => {
+  // Pass '' explicitly so the test does not depend on GOOGLE_MAPS_API_KEY /
+  // UFC_MAPS_API_KEY possibly being set in the execution environment.
+  const srv = await startTestServer({ mapsApiKey: '' });
   try {
     const res = await srv.request('GET', '/api/config');
     assert.equal(res.status, 200);

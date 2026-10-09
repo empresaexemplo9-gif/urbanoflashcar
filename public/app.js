@@ -201,6 +201,12 @@ function initMapsUI() {
       input.value = label;
       mapsSetPlace(target, { label, lat: loc.lat(), lng: loc.lng() });
     });
+    // If the user edits the text without picking a new suggestion, the saved
+    // coordinates no longer match what is shown — invalidate them so a stale
+    // location is never submitted. A fresh selection re-sets them.
+    input.addEventListener('input', () => {
+      if (input.value !== $(`[name="${target}-label"]`).value) invalidatePlace(target);
+    });
   }
 
   $('#geoloc-btn').addEventListener('click', () => {
@@ -259,6 +265,14 @@ function reverseGeocode(lat, lng) {
       resolve(status === 'OK' && results[0] ? results[0].formatted_address : `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
     });
   });
+}
+
+// Drop the saved coordinates + marker for one endpoint so a stale, no-longer-
+// matching location can't be submitted. The label text the user typed stays.
+function invalidatePlace(target) {
+  $(`[name="${target}-lat"]`).value = '';
+  $(`[name="${target}-lng"]`).value = '';
+  if (maps.markers[target]) { maps.markers[target].setMap(null); delete maps.markers[target]; }
 }
 
 function clearMaps() {
