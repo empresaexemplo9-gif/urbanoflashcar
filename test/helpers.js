@@ -8,14 +8,13 @@ import { createApp } from '../src/app.js';
 import { config as baseConfig } from '../src/config.js';
 
 export async function startTestServer(overrides = {}) {
-  const { gateway, ...configOverrides } = overrides;
   const db = openDatabase(':memory:');
   const config = {
     ...baseConfig,
-    ...configOverrides,
-    fare: { ...baseConfig.fare, ...(configOverrides.fare || {}) },
+    ...overrides,
+    fare: { ...baseConfig.fare, ...(overrides.fare || {}) },
   };
-  const server = createServer(createApp(db, config, { gateway }));
+  const server = createServer(createApp(db, config));
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address();
   const base = `http://127.0.0.1:${port}`;

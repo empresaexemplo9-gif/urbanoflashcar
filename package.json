@@ -40,6 +40,9 @@
     "directories": {
       "output": "dist-desktop"
     },
+    "publish": [
+      { "provider": "github", "owner": "empresaexemplo9-gif", "repo": "urbanoflashcar" }
+    ],
     "linux": {
       "target": ["AppImage", "deb"],
       "category": "Network",
