@@ -21,25 +21,25 @@ export function publicRide(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
-  // List queries LEFT JOIN the charge; expose a compact summary when present.
-  if (row.charge_status !== undefined) {
-    ride.charge = row.charge_status
-      ? { status: row.charge_status, amountCents: row.charge_amount_cents }
+  // List queries LEFT JOIN the payment; expose a compact summary when present.
+  if (row.payment_status !== undefined) {
+    ride.payment = row.payment_status
+      ? { status: row.payment_status, method: row.payment_method }
       : null;
   }
   return ride;
 }
 
-export function publicCharge(row) {
+export function publicPayment(row) {
   if (!row) return null;
   return {
     id: row.id,
     rideId: row.ride_id,
+    riderId: row.rider_id,
+    driverId: row.driver_id,
     amountCents: row.amount_cents,
+    method: row.method,
     status: row.status,
-    attempts: row.attempts,
-    gatewayRef: row.gateway_ref,
-    lastError: row.last_error,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

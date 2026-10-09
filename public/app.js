@@ -51,7 +51,8 @@ const STATUS_PT = {
   requested: 'Solicitada', accepted: 'Aceita', in_progress: 'Em andamento',
   completed: 'Concluída', cancelled: 'Cancelada',
 };
-const CHARGE_PT = { pending: 'pendente', paid: 'paga', failed: 'falhou' };
+const PAYMENT_PT = { pending: 'pendente', received: 'recebido' };
+const METHOD_PT = { pix: 'Pix', card: 'cartão' };
 
 // --- View switching -----------------------------------------------------
 function render() {
@@ -179,14 +180,18 @@ $('#ride-form').addEventListener('submit', async (e) => {
 function rideCard(ride, actions) {
   const li = document.createElement('li');
   li.className = 'ride';
-  const charge = ride.charge
-    ? `<div class="meta">Cobrança: ${CHARGE_PT[ride.charge.status] || ride.charge.status}</div>`
+  const paymentLine = ride.payment
+    ? `<div class="meta">Pagamento: ${PAYMENT_PT[ride.payment.status] || ride.payment.status}${
+        ride.payment.status === 'received' && ride.payment.method
+          ? ` via ${METHOD_PT[ride.payment.method] || ride.payment.method}`
+          : ''
+      }</div>`
     : '';
   li.innerHTML = `
     <div class="route">${escapeHtml(ride.pickup.label)} → ${escapeHtml(ride.dropoff.label)}</div>
     <div class="meta">${money(ride.fareCents)} · ${ride.distanceKm} km · ~${Math.round(ride.durationMin)} min</div>
     <div><span class="badge ${ride.status}">${STATUS_PT[ride.status] || ride.status}</span></div>
-    ${charge}
+    ${paymentLine}
     <div class="ride-actions"></div>`;
   const bar = li.querySelector('.ride-actions');
   for (const a of actions) {
@@ -220,18 +225,22 @@ async function transition(id, action) {
   } catch (err) { toast(err.message, 'err'); }
 }
 
-async function retryCharge(id) {
+// The driver confirms they received the payment directly, choosing the method.
+async function confirmPayment(id, method) {
   try {
-    const { charge } = await api(`/rides/${id}/charge/retry`, { method: 'POST' });
-    toast(charge.status === 'paid' ? 'Cobrança paga.' : 'Cobrança ainda falhou, tente novamente.', charge.status === 'paid' ? 'ok' : 'err');
+    const { payment } = await api(`/rides/${id}/payment/confirm`, { method: 'POST', body: { method } });
+    toast(`Pagamento recebido via ${METHOD_PT[payment.method] || payment.method}.`, 'ok');
     render();
   } catch (err) { toast(err.message, 'err'); }
 }
 
-// Offer a "retry charge" action on completed rides whose charge failed.
-function chargeActions(ride) {
-  return ride.status === 'completed' && ride.charge && ride.charge.status === 'failed'
-    ? [{ label: 'Tentar cobrança', run: () => retryCharge(ride.id) }]
+// Driver-side actions to confirm receipt on a completed ride with a pending payment.
+function paymentActions(ride) {
+  return ride.status === 'completed' && ride.payment && ride.payment.status === 'pending'
+    ? [
+        { label: 'Recebi via Pix', run: () => confirmPayment(ride.id, 'pix') },
+        { label: 'Recebi via cartão', run: () => confirmPayment(ride.id, 'card') },
+      ]
     : [];
 }
 
@@ -239,10 +248,9 @@ async function loadRiderRides() {
   try {
     const { rides } = await api('/rides');
     fill('#rides-list', rides, (r) =>
-      (['requested', 'accepted'].includes(r.status)
+      ['requested', 'accepted'].includes(r.status)
         ? [{ label: 'Cancelar', run: () => transition(r.id, 'cancel') }]
-        : []
-      ).concat(chargeActions(r)));
+        : []);
   } catch (err) { toast(err.message, 'err'); }
 }
 
@@ -262,7 +270,7 @@ async function loadDriverRides() {
         { label: 'Cancelar', run: () => transition(r.id, 'cancel') },
       ];
       if (r.status === 'in_progress') return [{ label: 'Concluir', run: () => transition(r.id, 'complete') }];
-      return chargeActions(r);
+      return paymentActions(r);
     });
   } catch (err) { toast(err.message, 'err'); }
 }

@@ -42,24 +42,25 @@ CREATE TABLE IF NOT EXISTS rides (
   updated_at     TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS charges (
-  id               INTEGER PRIMARY KEY AUTOINCREMENT,
-  ride_id          INTEGER NOT NULL UNIQUE REFERENCES rides(id) ON DELETE CASCADE,
-  rider_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  amount_cents     INTEGER NOT NULL,
-  status           TEXT NOT NULL CHECK (status IN ('pending', 'paid', 'failed')),
-  attempts         INTEGER NOT NULL DEFAULT 0,
-  idempotency_key  TEXT NOT NULL,
-  gateway_ref      TEXT,
-  last_error       TEXT,
-  created_at       TEXT NOT NULL,
-  updated_at       TEXT NOT NULL
+-- Payment is settled DIRECTLY with the driver (Pix or physical card machine).
+-- There is no online gateway: a payment is created "pending" when the ride is
+-- completed and the driver marks it "received", recording how it was paid.
+CREATE TABLE IF NOT EXISTS payments (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  ride_id       INTEGER NOT NULL UNIQUE REFERENCES rides(id) ON DELETE CASCADE,
+  rider_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  driver_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  amount_cents  INTEGER NOT NULL,
+  method        TEXT CHECK (method IN ('pix', 'card')),
+  status        TEXT NOT NULL CHECK (status IN ('pending', 'received')),
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_rides_rider ON rides(rider_id);
 CREATE INDEX IF NOT EXISTS idx_rides_driver ON rides(driver_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
-CREATE INDEX IF NOT EXISTS idx_charges_ride ON charges(ride_id);
+CREATE INDEX IF NOT EXISTS idx_payments_ride ON payments(ride_id);
 `;
 
 export function openDatabase(file) {

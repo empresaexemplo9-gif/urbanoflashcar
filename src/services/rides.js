@@ -28,7 +28,7 @@ function parsePlace(place, name) {
   return { label, lat, lng };
 }
 
-export function createRidesService({ rides, config, billing = null, now = () => new Date() }) {
+export function createRidesService({ rides, config, payments = null, now = () => new Date() }) {
   function estimate({ pickup, dropoff }) {
     const p = parsePlace(pickup, 'pickup');
     const d = parsePlace(dropoff, 'dropoff');
@@ -124,13 +124,12 @@ export function createRidesService({ rides, config, billing = null, now = () => 
     return publicRide(updated);
   }
 
-  // Completing a ride also settles its fare. Billing failures do not roll back
-  // the completion: the ride is done and the charge is left retryable (P004).
-  async function complete(user, id) {
+  // Completing a ride opens a payment to be settled directly with the driver
+  // (Pix or physical card). The driver confirms receipt afterwards.
+  function complete(user, id) {
     const ride = transition(user, id, 'complete');
-    let charge = null;
-    if (billing) charge = await billing.settleRide(ride);
-    return { ride, charge };
+    const payment = payments ? payments.settleRide(ride) : null;
+    return { ride, payment };
   }
 
   return { estimate, request, listForUser, listOpen, get, transition, complete };

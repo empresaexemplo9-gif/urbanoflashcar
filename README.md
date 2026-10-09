@@ -13,9 +13,9 @@ código recuperado (veja [`DELIVERIES.md`](./DELIVERIES.md)).
   tempo), solicitação, listagem, cancelamento.
 - **Ciclo do motorista** — corridas disponíveis → aceitar → iniciar → concluir,
   com transições de estado validadas.
-- **Cobrança resiliente** — ao concluir a corrida, a tarifa é cobrada por um
-  gateway simulado com idempotência (não cobra em dobro), tolerância a
-  indisponibilidade/timeout e retentativa que preserva o trabalho.
+- **Pagamento direto ao motorista** — ao concluir a corrida, abre-se um
+  pagamento pendente; o passageiro paga **direto ao motorista por Pix ou
+  cartão físico (maquininha)** e o motorista confirma o recebimento no app.
 - **Isolamento por conta** — um passageiro não vê nem altera a corrida de outro.
 - **Continuidade de dados** — tudo persiste em SQLite e sobrevive a reinícios.
 
@@ -50,7 +50,7 @@ e o modelo de tarifa (`FARE_BASE_CENTS`, `FARE_PER_KM_CENTS`,
 ## Testar
 
 ```bash
-npm test            # 39 testes: unidade (tarifa/geo/cobrança) + integração (API/dados/permissões) + PWA
+npm test            # 37 testes: unidade (tarifa/geo) + integração (API/dados/permissões/pagamento) + PWA
 ```
 
 ## API
@@ -69,10 +69,10 @@ npm test            # 39 testes: unidade (tarifa/geo/cobrança) + integração (
 | GET  | `/api/rides/:id` | Detalhe (dono ou motorista designado) |
 | POST | `/api/rides/:id/accept` | Motorista aceita |
 | POST | `/api/rides/:id/start` | Motorista inicia |
-| POST | `/api/rides/:id/complete` | Motorista conclui (gera a cobrança) |
+| POST | `/api/rides/:id/complete` | Motorista conclui (abre o pagamento) |
 | POST | `/api/rides/:id/cancel` | Passageiro ou motorista cancela |
-| GET  | `/api/rides/:id/charge` | Estado da cobrança da corrida |
-| POST | `/api/rides/:id/charge/retry` | Retentar cobrança que falhou |
+| GET  | `/api/rides/:id/payment` | Estado do pagamento da corrida |
+| POST | `/api/rides/:id/payment/confirm` | Motorista confirma recebimento (`{method: pix\|card}`) |
 
 Erros seguem o formato `{ "error": { "code": "...", "message": "..." } }`.
 

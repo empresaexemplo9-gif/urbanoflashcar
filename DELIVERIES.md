@@ -31,7 +31,7 @@ analisado (rides). O modelo de dados, os contratos e as regras aqui são
 | **Instalável (PWA)** | Pedido do responsável | App web instalável em celular (Android/iOS) e desktop (Win/Mac/Linux): manifest, service worker, ícones | `test/pwa.test.js` (4 casos) |
 | **Instalável (desktop)** | Pedido do responsável | App Electron que embute o servidor; instaladores AppImage + .deb gerados e verificados | Build + execução do binário empacotado |
 | **P010** Publicar com recuperação | Requisito de produto | Dockerfile, volume de dados, health check, shutdown gracioso | `Dockerfile`, `src/server.js` |
-| **P004** Integrações e sincronização | Proposta | Cobrança via **gateway simulado** injetável: sucesso, indisponibilidade, timeout, retentativa idempotente; estado da sincronização visível | `test/billing.test.js` (10 casos) |
+| **P004** Pagamento (direto ao motorista) | Pedido do responsável | Pagamento **direto ao motorista por Pix ou cartão físico**: ao concluir abre pagamento pendente; o motorista confirma o recebimento com o método | `test/payments.test.js` (8 casos) |
 | **P007** Compatibilidade do app | Proposta; **não** no escopo | — (o alvo é web; app nativo seria outra trilha) | — |
 | **P008** Prototipar diferencial | Hipótese | — (requer comparação com alternativas reais e usuários) | — |
 | **P001 / N001–N003** Validar com usuários | Requisito de descoberta | Não automatizável em código; depende de pesquisa com público | — |
@@ -39,17 +39,16 @@ analisado (rides). O modelo de dados, os contratos e as regras aqui são
 Itens sem teste são explicitamente **fora do escopo deste MVP** e permanecem
 como hipóteses a validar — não foram marcados como concluídos.
 
-> **Sobre P004 (honestidade de evidência):** o gateway de pagamento é
-> **simulado** (`src/lib/paymentGateway.js`), não uma integração com provedor
-> real. O que está implementado e testado são as *regras de resiliência*
-> (idempotência, tolerância a falha, retentativa, estado visível). Conectar um
-> provedor real — com credenciais e webhooks — continua sendo trabalho futuro;
-> o gateway é injetável justamente para permitir essa troca sem alterar as
-> regras de negócio.
+> **Sobre P004 (modelo de pagamento):** por enquanto o pagamento é **direto
+> ao motorista** — Pix ou cartão físico (maquininha). O app não processa
+> dinheiro: ele registra o pagamento como pendente ao concluir a corrida e o
+> motorista confirma o recebimento (com o método). Integração com um provedor
+> online (cobrança no app, split, antifraude, webhooks) continua sendo
+> trabalho futuro.
 
 ## Verificações executadas nesta entrega
 
-1. `npm test` → **39/39** testes passam (unidade + integração + PWA).
+1. `npm test` → **37/37** testes passam (unidade + integração + pagamento + PWA).
 2. Servidor real iniciado: `GET /api/health` responde `{"status":"ok"}`.
 3. Estáticos servidos com `Content-Type` correto (`/`, `/app.js`).
 4. Jornada ponta a ponta via HTTP: estimar → passageiro solicita → motorista
@@ -57,9 +56,10 @@ como hipóteses a validar — não foram marcados como concluídos.
 5. Isolamento: outro passageiro recebe **404** ao buscar corrida alheia.
 6. Continuidade: após reiniciar o servidor sobre o mesmo arquivo SQLite, o
    histórico da corrida (status `completed`) permaneceu.
-7. Cobrança: concluir a corrida gerou cobrança `paid`; com gateway indisponível
-   a corrida continuou `completed` e a cobrança ficou `failed` e retentável;
-   gateway instável recuperou na retentativa; cobrar duas vezes é bloqueado.
+7. Pagamento: concluir a corrida abriu pagamento `pending`; o motorista
+   designado confirmou o recebimento via Pix e via cartão (`received` + método);
+   método inválido é rejeitado; confirmar duas vezes é bloqueado; só o motorista
+   da corrida confirma; o resumo aparece na listagem.
 8. PWA: manifest válido (`application/manifest+json`), service worker e ícones
    PNG servidos; `index.html` referencia manifest/ícones/theme-color.
 9. Desktop (Electron): app roda em dev e empacotado; o binário empacotado subiu
@@ -81,5 +81,6 @@ como hipóteses a validar — não foram marcados como concluídos.
 
 - Confirmar público-alvo e a jornada de maior valor com usuários reais.
 - Validar estados vazios, erros e permissões em sessão autorizada de produção.
-- Conectar provedor de pagamento real (o gateway atual é simulado) e um
-  geocoder/mapa real; hoje as coordenadas vêm de presets ou entrada manual.
+- Pagamento online no app (hoje é direto ao motorista por Pix/cartão físico):
+  avaliar provedor, split e antifraude quando fizer sentido.
+- Geocoder/mapa real; hoje as coordenadas vêm de presets ou entrada manual.
