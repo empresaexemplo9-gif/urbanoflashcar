@@ -6,6 +6,9 @@ on:
   push:
     tags:
       - 'v*'
+  # Permite disparar manualmente (útil quando não é possível publicar uma tag).
+  # O electron-builder cria a Release "v<version>" a partir da versão do package.json.
+  workflow_dispatch:
 
 permissions:
   contents: write
