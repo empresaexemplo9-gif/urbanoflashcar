@@ -57,10 +57,35 @@ CREATE TABLE IF NOT EXISTS payments (
   updated_at    TEXT NOT NULL
 );
 
+-- Favorite routes a rider saves for quick re-use on the home screen.
+CREATE TABLE IF NOT EXISTS favorites (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  label          TEXT NOT NULL,
+  pickup_label   TEXT NOT NULL,
+  pickup_lat     REAL NOT NULL,
+  pickup_lng     REAL NOT NULL,
+  dropoff_label  TEXT NOT NULL,
+  dropoff_lat    REAL NOT NULL,
+  dropoff_lng    REAL NOT NULL,
+  created_at     TEXT NOT NULL
+);
+
+-- Driver presence: whether a driver is online and their last known location,
+-- used to find nearby partner drivers for a pickup.
+CREATE TABLE IF NOT EXISTS driver_status (
+  user_id     INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  available   INTEGER NOT NULL DEFAULT 0,
+  lat         REAL,
+  lng         REAL,
+  updated_at  TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_rides_rider ON rides(rider_id);
 CREATE INDEX IF NOT EXISTS idx_rides_driver ON rides(driver_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_payments_ride ON payments(ride_id);
+CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id);
 `;
 
 // One-time backfill for databases created by a previous release that used a

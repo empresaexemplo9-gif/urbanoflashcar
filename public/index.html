@@ -75,14 +75,36 @@
       </section>
 
       <!-- Rider view -->
-      <section id="rider-view" class="grid" hidden>
-        <div class="card">
-          <h2>Solicitar corrida</h2>
+      <section id="rider-view" hidden>
+        <!-- Tela inicial: rotas favoritas + corridas -->
+        <div id="rider-home" class="grid">
+          <div class="card">
+            <div class="list-head">
+              <h2>Rotas favoritas</h2>
+              <button id="new-ride-btn" type="button" class="btn btn-primary btn-sm">+ Nova corrida</button>
+            </div>
+            <ul id="favorites-list" class="rides" aria-live="polite"></ul>
+          </div>
+          <div class="card">
+            <div class="list-head">
+              <h2>Minhas corridas</h2>
+              <button id="refresh-rides" type="button" class="btn btn-ghost">Atualizar</button>
+            </div>
+            <ul id="rides-list" class="rides" aria-live="polite"></ul>
+          </div>
+        </div>
+
+        <!-- Tela: escolher origem/destino e procurar motorista próximo -->
+        <div id="rider-newride" class="card" hidden>
+          <div class="list-head">
+            <h2>Origem, destino e motorista</h2>
+            <button id="back-home-btn" type="button" class="btn btn-ghost btn-sm">← Voltar</button>
+          </div>
           <form id="ride-form" class="form maps-off" novalidate>
-            <!-- Mapa real (Google Maps) — exibido quando há chave configurada -->
+            <!-- Mapa real gratuito (Leaflet + OpenStreetMap) -->
             <div id="map" class="map" aria-label="Mapa" role="application"></div>
 
-            <!-- Busca de endereços reais (Google Places Autocomplete) -->
+            <!-- Busca de endereços reais (Photon / OpenStreetMap) -->
             <div class="maps-inputs">
               <label>Origem
                 <input type="text" id="pickup-search" class="addr" placeholder="Buscar endereço de origem" autocomplete="off" />
@@ -93,8 +115,8 @@
               </label>
             </div>
 
-            <!-- Fallback (sem chave do Maps): presets + coordenadas.
-                 Também é o armazenamento dos valores usados ao solicitar. -->
+            <!-- Fallback (offline): presets + coordenadas. Também armazena os
+                 valores usados ao solicitar. -->
             <div class="manual-inputs">
               <div class="place">
                 <label>Origem
@@ -120,36 +142,40 @@
 
             <div class="actions">
               <button type="button" id="estimate-btn" class="btn btn-ghost">Estimar</button>
+              <button type="button" id="find-drivers-btn" class="btn btn-ghost">Motoristas próximos</button>
+              <button type="button" id="save-fav-btn" class="btn btn-ghost">★ Salvar favorita</button>
               <button type="submit" class="btn btn-primary">Solicitar</button>
             </div>
           </form>
           <div id="estimate-box" class="estimate" hidden aria-live="polite"></div>
-        </div>
-
-        <div class="card">
-          <div class="list-head">
-            <h2>Minhas corridas</h2>
-            <button id="refresh-rides" type="button" class="btn btn-ghost">Atualizar</button>
-          </div>
-          <ul id="rides-list" class="rides" aria-live="polite"></ul>
+          <div id="nearby-box" class="nearby" hidden aria-live="polite"></div>
         </div>
       </section>
 
       <!-- Driver view -->
-      <section id="driver-view" class="grid" hidden>
-        <div class="card">
+      <section id="driver-view" hidden>
+        <div class="card availability">
           <div class="list-head">
-            <h2>Corridas disponíveis</h2>
-            <button id="refresh-available" type="button" class="btn btn-ghost">Atualizar</button>
+            <h2>Disponibilidade</h2>
+            <button id="online-toggle" type="button" class="btn btn-primary btn-sm">Ficar online</button>
           </div>
-          <ul id="available-list" class="rides" aria-live="polite"></ul>
+          <div id="online-status" class="meta">Offline — compartilhe sua localização para aparecer aos passageiros.</div>
         </div>
-        <div class="card">
-          <div class="list-head">
-            <h2>Minhas corridas</h2>
-            <button id="refresh-driver-rides" type="button" class="btn btn-ghost">Atualizar</button>
+        <div class="grid">
+          <div class="card">
+            <div class="list-head">
+              <h2>Corridas disponíveis</h2>
+              <button id="refresh-available" type="button" class="btn btn-ghost">Atualizar</button>
+            </div>
+            <ul id="available-list" class="rides" aria-live="polite"></ul>
           </div>
-          <ul id="driver-rides-list" class="rides" aria-live="polite"></ul>
+          <div class="card">
+            <div class="list-head">
+              <h2>Minhas corridas</h2>
+              <button id="refresh-driver-rides" type="button" class="btn btn-ghost">Atualizar</button>
+            </div>
+            <ul id="driver-rides-list" class="rides" aria-live="polite"></ul>
+          </div>
         </div>
       </section>
     </main>

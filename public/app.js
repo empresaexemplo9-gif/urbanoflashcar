@@ -65,9 +65,9 @@ function render() {
   if (authed) {
     $('#session-user').textContent = `${state.user.name} · ${state.user.role === 'driver' ? 'Motorista' : 'Passageiro'}`;
     if (state.user.role === 'rider') {
+      showRiderScreen('home');
       loadRiderRides();
-      // O mapa foi criado com a seção oculta; recalcula o tamanho ao exibir.
-      if (maps.ready && maps.map) setTimeout(() => maps.map.invalidateSize(), 60);
+      loadFavorites();
     } else { loadAvailable(); loadDriverRides(); }
   }
 }
@@ -123,6 +123,12 @@ $('#register-form').addEventListener('submit', async (e) => {
 });
 
 $('#logout-btn').addEventListener('click', async () => {
+  // Go offline before the token is invalidated, otherwise the driver stays
+  // visible to riders until the freshness window expires.
+  if (presence.online) {
+    try { await api('/driver/offline', { method: 'POST' }); } catch { /* ignore */ }
+  }
+  stopPresence();
   try { await api('/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
   state.token = null; state.user = null;
   localStorage.removeItem(TOKEN_KEY);
@@ -333,7 +339,12 @@ function clearMaps() {
 }
 
 function readPlaces() {
-  const num = (n) => Number($(`[name="${n}"]`).value);
+  // Blank fields must stay invalid: Number('') is 0, which is a real coordinate
+  // (Gulf of Guinea) and would slip past the NaN guards, so map empty to NaN.
+  const num = (n) => {
+    const raw = $(`[name="${n}"]`).value.trim();
+    return raw === '' ? NaN : Number(raw);
+  };
   return {
     pickup: { label: $('[name="pickup-label"]').value.trim(), lat: num('pickup-lat'), lng: num('pickup-lng') },
     dropoff: { label: $('[name="dropoff-label"]').value.trim(), lat: num('dropoff-lat'), lng: num('dropoff-lng') },
@@ -356,10 +367,110 @@ $('#ride-form').addEventListener('submit', async (e) => {
     await api('/rides', { method: 'POST', body: readPlaces() });
     toast('Corrida solicitada!', 'ok');
     $('#estimate-box').hidden = true;
+    $('#nearby-box').hidden = true;
     e.target.reset();
     clearMaps();
+    showRiderScreen('home');
     loadRiderRides();
   } catch (err) { toast(err.message, 'err'); }
+});
+
+// --- Rider screens: home (favoritos) ↔ nova corrida ---------------------
+function showRiderScreen(which) {
+  const newRide = which === 'newride';
+  $('#rider-home').hidden = newRide;
+  $('#rider-newride').hidden = !newRide;
+  if (newRide && maps.ready && maps.map) setTimeout(() => maps.map.invalidateSize(), 60);
+}
+$('#new-ride-btn').addEventListener('click', () => showRiderScreen('newride'));
+$('#back-home-btn').addEventListener('click', () => showRiderScreen('home'));
+
+// --- Favoritos ----------------------------------------------------------
+async function loadFavorites() {
+  try {
+    const { favorites } = await api('/favorites');
+    const ul = $('#favorites-list');
+    ul.innerHTML = '';
+    if (!favorites.length) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = 'Nenhuma rota favorita. Salve uma ao solicitar uma corrida.';
+      ul.appendChild(li);
+      return;
+    }
+    for (const fav of favorites) {
+      const li = document.createElement('li');
+      li.className = 'ride';
+      li.innerHTML = `
+        <div class="route">${escapeHtml(fav.label)}</div>
+        <div class="meta">${escapeHtml(fav.pickup.label)} → ${escapeHtml(fav.dropoff.label)}</div>
+        <div class="ride-actions"></div>`;
+      const bar = li.querySelector('.ride-actions');
+      const use = document.createElement('button');
+      use.className = 'btn btn-primary btn-sm';
+      use.textContent = 'Usar';
+      use.addEventListener('click', () => useFavorite(fav));
+      const del = document.createElement('button');
+      del.className = 'btn btn-ghost btn-sm';
+      del.textContent = 'Excluir';
+      del.addEventListener('click', () => deleteFavorite(fav.id));
+      bar.append(use, del);
+      ul.appendChild(li);
+    }
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+function useFavorite(fav) {
+  showRiderScreen('newride');
+  mapsSetPlace('pickup', { label: fav.pickup.label, lat: fav.pickup.lat, lng: fav.pickup.lng });
+  mapsSetPlace('dropoff', { label: fav.dropoff.label, lat: fav.dropoff.lat, lng: fav.dropoff.lng });
+  setSearchValue('pickup', fav.pickup.label);
+  setSearchValue('dropoff', fav.dropoff.label);
+  toast('Rota carregada. Confira e solicite.', 'ok');
+}
+
+async function deleteFavorite(id) {
+  try {
+    await api(`/favorites/${id}`, { method: 'DELETE' });
+    loadFavorites();
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+$('#save-fav-btn').addEventListener('click', async () => {
+  const places = readPlaces();
+  const invalid = (p) => !p.label || Number.isNaN(p.lat) || Number.isNaN(p.lng);
+  if (invalid(places.pickup) || invalid(places.dropoff)) {
+    return toast('Defina origem e destino antes de salvar.', 'err');
+  }
+  const label = window.prompt('Nome da rota favorita:', `${places.pickup.label} → ${places.dropoff.label}`);
+  if (!label) return;
+  try {
+    await api('/favorites', { method: 'POST', body: { label, pickup: places.pickup, dropoff: places.dropoff } });
+    toast('Rota favorita salva!', 'ok');
+    loadFavorites();
+  } catch (err) { toast(err.message, 'err'); }
+});
+
+// --- Motoristas próximos ------------------------------------------------
+$('#find-drivers-btn').addEventListener('click', async () => {
+  const { pickup } = readPlaces();
+  if (Number.isNaN(pickup.lat) || Number.isNaN(pickup.lng)) {
+    return toast('Defina a origem para procurar motoristas.', 'err');
+  }
+  const box = $('#nearby-box');
+  box.hidden = false;
+  box.textContent = 'Procurando motoristas próximos…';
+  try {
+    const { drivers } = await api(`/drivers/nearby?lat=${pickup.lat}&lng=${pickup.lng}`);
+    if (!drivers.length) {
+      box.innerHTML = '<div class="meta">Nenhum motorista parceiro próximo no momento.</div>';
+      return;
+    }
+    box.innerHTML = '<div class="meta">Motoristas parceiros próximos:</div>' +
+      drivers.map((d) =>
+        `<div class="nearby-item"><span>🚗 ${escapeHtml(d.name)}</span>` +
+        `<span>${d.distanceKm} km · ~${Math.round(d.etaMin)} min</span></div>`).join('');
+  } catch (err) { box.hidden = true; toast(err.message, 'err'); }
 });
 
 // --- Ride rendering -----------------------------------------------------
@@ -464,6 +575,60 @@ async function loadDriverRides() {
 $('#refresh-rides').addEventListener('click', loadRiderRides);
 $('#refresh-available').addEventListener('click', loadAvailable);
 $('#refresh-driver-rides').addEventListener('click', loadDriverRides);
+
+// --- Disponibilidade do motorista (ficar online + localização) ----------
+const presence = { online: false, timer: null };
+
+function setDriverOnline(online) {
+  presence.online = online;
+  const btn = $('#online-toggle');
+  const status = $('#online-status');
+  if (btn) btn.textContent = online ? 'Ficar offline' : 'Ficar online';
+  if (status) {
+    status.textContent = online
+      ? 'Online — compartilhando sua localização; você aparece aos passageiros.'
+      : 'Offline — compartilhe sua localização para aparecer aos passageiros.';
+  }
+}
+
+function pushDriverLocation() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) { toast('Geolocalização indisponível.', 'err'); return resolve(false); }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          await api('/driver/location', { method: 'POST', body: { available: true, lat: pos.coords.latitude, lng: pos.coords.longitude } });
+          resolve(true);
+        } catch (err) { toast(err.message, 'err'); resolve(false); }
+      },
+      () => { toast('Não foi possível obter sua localização.', 'err'); resolve(false); },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  });
+}
+
+function stopPresence() {
+  if (presence.timer) { clearInterval(presence.timer); presence.timer = null; }
+  presence.online = false;
+}
+
+const onlineToggle = $('#online-toggle');
+if (onlineToggle) {
+  onlineToggle.addEventListener('click', async () => {
+    if (presence.online) {
+      stopPresence();
+      try { await api('/driver/offline', { method: 'POST' }); } catch { /* ignore */ }
+      setDriverOnline(false);
+      toast('Você está offline.', 'ok');
+    } else {
+      const ok = await pushDriverLocation();
+      if (!ok) return;
+      setDriverOnline(true);
+      toast('Você está online.', 'ok');
+      presence.timer = setInterval(pushDriverLocation, 30000); // reenvia a posição
+    }
+  });
+}
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) =>
