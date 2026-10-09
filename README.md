@@ -56,8 +56,13 @@ e o modelo de tarifa (`FARE_BASE_CENTS`, `FARE_PER_KM_CENTS`,
 
 ## Localização real (gratuita, sem chave)
 
-A tela de solicitar corrida usa **mapa real + autocomplete de endereços +
-"usar minha localização"** com serviços **gratuitos e sem API key**:
+Ao abrir **"Nova corrida"**, a origem é preenchida **automaticamente com a sua
+localização atual e real** (GPS do dispositivo; se indisponível/negado, cai para
+uma estimativa por IP — sem chave). Você pode ajustar no mapa, digitar ou usar
+o botão **"Usar minha localização"**.
+
+A tela usa **mapa real + autocomplete de endereços** com serviços **gratuitos e
+sem API key**:
 
 - **Mapa:** [Leaflet](https://leafletjs.com/) + tiles do
   [OpenStreetMap](https://www.openstreetmap.org/).

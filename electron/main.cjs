@@ -5,9 +5,24 @@
 // self-contained. Set UFC_SERVER_URL to point the window at a remote/hosted
 // backend instead (then no local server is started).
 
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, shell, session } = require('electron');
 const { fork } = require('node:child_process');
 const path = require('node:path');
+
+// Allow the renderer to request geolocation. Electron denies permissions by
+// default; the app uses the real current location (with an IP-based fallback
+// in the UI for when the bundled Chromium has no geolocation service).
+function allowGeolocation() {
+  try {
+    const ses = session.defaultSession;
+    ses.setPermissionRequestHandler((wc, permission, cb) => cb(permission === 'geolocation'));
+    if (ses.setPermissionCheckHandler) {
+      ses.setPermissionCheckHandler((wc, permission) => permission === 'geolocation');
+    }
+  } catch (err) {
+    console.error('[ufc-geo]', err && err.message ? err.message : err);
+  }
+}
 
 // Keep the installed desktop app in lockstep with the platform: check GitHub
 // Releases on launch and install the new version on quit. Only meaningful for
@@ -144,6 +159,7 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
+    allowGeolocation();
     let url;
     try {
       url = await resolveAppUrl();
