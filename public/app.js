@@ -171,7 +171,55 @@ function setupPresets() {
 // Não exige API key nem cadastro: tiles do OpenStreetMap e geocodificação pelo
 // Photon (projeto OSM). Se o Leaflet/rede não carregar, cai no modo manual.
 const PHOTON = 'https://photon.komoot.io';
+// Keyless IP geolocation fallback (CORS-enabled). Used only when the device
+// geolocation is unavailable or denied — notably in the Electron desktop,
+// whose bundled Chromium ships no geolocation key.
+const IP_GEO = 'https://ipwho.is/';
 const maps = { ready: false, map: null, markers: {} };
+
+// Resolve the user's real current position: device GPS first, then IP-based
+// fallback. Returns { lat, lng, approx } or null. Never throws.
+function devicePosition(timeoutMs = 8000) {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, approx: false }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 60000 },
+    );
+  });
+}
+function ipPosition() {
+  return fetch(IP_GEO, { cache: 'no-store' })
+    .then((r) => r.json())
+    .then((d) => {
+      const lat = Number(d && d.latitude);
+      const lng = Number(d && d.longitude);
+      if (Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)) {
+        return { lat, lng, approx: true };
+      }
+      return null;
+    })
+    .catch(() => null);
+}
+async function resolveCurrentPlace() {
+  const pos = (await devicePosition()) || (await ipPosition());
+  if (!pos) return null;
+  const base = await reverseGeocode(pos.lat, pos.lng);
+  return { label: pos.approx ? `${base} (aprox.)` : base, lat: pos.lat, lng: pos.lng };
+}
+// Fill the pickup with the real current location. `silent` suppresses the
+// error toast (used for the automatic fill on opening a new ride).
+async function useCurrentLocation({ silent = false } = {}) {
+  const place = await resolveCurrentPlace();
+  if (!place) {
+    if (!silent) toast('Não foi possível obter sua localização.', 'err');
+    return false;
+  }
+  setSearchValue('pickup', place.label);
+  mapsSetPlace('pickup', place);
+  return true;
+}
 
 function setupMaps() {
   if (typeof L === 'undefined') return; // Leaflet não carregou → modo manual
@@ -198,18 +246,7 @@ function initMapsUI() {
     mapsSetPlace(target, { label, lat, lng });
   });
 
-  $('#geoloc-btn').addEventListener('click', () => {
-    if (!navigator.geolocation) return toast('Geolocalização indisponível.', 'err');
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        const label = await reverseGeocode(latitude, longitude);
-        setSearchValue('pickup', label);
-        mapsSetPlace('pickup', { label, lat: latitude, lng: longitude });
-      },
-      () => toast('Não foi possível obter sua localização.', 'err'),
-    );
-  });
+  $('#geoloc-btn').addEventListener('click', () => useCurrentLocation());
 
   maps.ready = true;
   $('#ride-form').classList.replace('maps-off', 'maps-on');
@@ -393,7 +430,13 @@ function showRiderScreen(which) {
   $('#rider-newride').hidden = !newRide;
   if (newRide && maps.ready && maps.map) setTimeout(() => maps.map.invalidateSize(), 60);
 }
-$('#new-ride-btn').addEventListener('click', () => showRiderScreen('newride'));
+$('#new-ride-btn').addEventListener('click', () => {
+  showRiderScreen('newride');
+  // Always start from the user's real current location: auto-fill the pickup
+  // when it is empty (don't clobber a pickup already chosen, e.g. a favorite).
+  const hasPickup = $('[name="pickup-lat"]').value.trim() !== '';
+  if (!hasPickup) useCurrentLocation({ silent: true });
+});
 $('#back-home-btn').addEventListener('click', () => showRiderScreen('home'));
 
 // --- Favoritos ----------------------------------------------------------
