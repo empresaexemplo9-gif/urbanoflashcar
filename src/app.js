@@ -11,9 +11,13 @@ import { createUsersRepo } from './repositories/users.js';
 import { createSessionsRepo } from './repositories/sessions.js';
 import { createRidesRepo } from './repositories/rides.js';
 import { createPaymentsRepo } from './repositories/payments.js';
+import { createFavoritesRepo } from './repositories/favorites.js';
+import { createDriverStatusRepo } from './repositories/driverStatus.js';
 import { createAuthService } from './services/auth.js';
 import { createRidesService } from './services/rides.js';
 import { createPaymentsService } from './services/payments.js';
+import { createFavoritesService } from './services/favorites.js';
+import { createDriversService } from './services/drivers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', 'public');
@@ -29,10 +33,14 @@ export function createApp(db, config, { now } = {}) {
   const sessions = createSessionsRepo(db);
   const rides = createRidesRepo(db);
   const paymentsRepo = createPaymentsRepo(db);
+  const favoritesRepo = createFavoritesRepo(db);
+  const driverStatusRepo = createDriverStatusRepo(db);
 
   const auth = createAuthService({ users, sessions, config, now });
   const payments = createPaymentsService({ payments: paymentsRepo, rides, now });
   const rideService = createRidesService({ rides, config, payments, now });
+  const favoritesService = createFavoritesService({ favorites: favoritesRepo, now });
+  const driversService = createDriversService({ driverStatus: driverStatusRepo, config, now });
 
   const router = new Router();
 
@@ -102,6 +110,42 @@ export function createApp(db, config, { now } = {}) {
     const u = requireUser(ctx);
     const method = String((ctx.body || {}).method || '');
     return { payment: payments.confirm(u, parseId(ctx), method) };
+  });
+
+  // --- Favorite routes (home screen) ---
+  router.get('/api/favorites', (ctx) => {
+    const u = requireUser(ctx);
+    return { favorites: favoritesService.list(u) };
+  });
+  router.post('/api/favorites', (ctx) => {
+    const u = requireUser(ctx);
+    return json(201, { favorite: favoritesService.create(u, ctx.body || {}) });
+  });
+  router.add('DELETE', '/api/favorites/:id', (ctx) => {
+    const u = requireUser(ctx);
+    favoritesService.remove(u, parseId(ctx));
+    return { ok: true };
+  });
+
+  // --- Driver presence + nearby partner drivers ---
+  router.post('/api/driver/location', (ctx) => {
+    const u = requireUser(ctx);
+    return { status: driversService.setLocation(u, ctx.body || {}) };
+  });
+  router.post('/api/driver/offline', (ctx) => {
+    const u = requireUser(ctx);
+    return { status: driversService.goOffline(u) };
+  });
+  router.get('/api/drivers/nearby', (ctx) => {
+    const u = requireUser(ctx);
+    return {
+      drivers: driversService.nearby(u, {
+        lat: ctx.query.get('lat'),
+        lng: ctx.query.get('lng'),
+        radiusKm: ctx.query.get('radiusKm'),
+        limit: ctx.query.get('limit'),
+      }),
+    };
   });
 
   router.serveStatic(PUBLIC_DIR);

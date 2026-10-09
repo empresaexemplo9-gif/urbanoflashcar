@@ -30,6 +30,17 @@ export function publicRide(row) {
   return ride;
 }
 
+export function publicFavorite(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    label: row.label,
+    pickup: { label: row.pickup_label, lat: row.pickup_lat, lng: row.pickup_lng },
+    dropoff: { label: row.dropoff_label, lat: row.dropoff_lat, lng: row.dropoff_lng },
+    createdAt: row.created_at,
+  };
+}
+
 export function publicPayment(row) {
   if (!row) return null;
   return {

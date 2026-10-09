@@ -11,6 +11,10 @@ código recuperado (veja [`DELIVERIES.md`](./DELIVERIES.md)).
   (armazenado só como hash), senha com `scrypt`.
 - **Solicitar e acompanhar corridas** — estimativa de tarifa (distância +
   tempo), solicitação, listagem, cancelamento.
+- **Tela inicial + rotas favoritas** — o passageiro salva rotas (origem→destino)
+  e reusa num toque; tela separada para escolher origem/destino.
+- **Motoristas próximos** — motoristas ficam "online" e compartilham localização;
+  o passageiro vê os parceiros mais próximos (distância/ETA) antes de solicitar.
 - **Ciclo do motorista** — corridas disponíveis → aceitar → iniciar → concluir,
   com transições de estado validadas.
 - **Pagamento direto ao motorista** — ao concluir a corrida, abre-se um
@@ -68,7 +72,7 @@ carregarem (offline), o app cai no modo de **presets/coordenadas manuais**.
 ## Testar
 
 ```bash
-npm test            # 39 testes: unidade (tarifa/geo) + integração (API/dados/permissões/pagamento) + PWA
+npm test            # 49 testes: unidade (tarifa/geo) + integração (API/dados/permissões/pagamento) + PWA
 ```
 
 ## API
@@ -91,6 +95,12 @@ npm test            # 39 testes: unidade (tarifa/geo) + integração (API/dados/
 | POST | `/api/rides/:id/cancel` | Passageiro ou motorista cancela |
 | GET  | `/api/rides/:id/payment` | Estado do pagamento da corrida |
 | POST | `/api/rides/:id/payment/confirm` | Motorista confirma recebimento (`{method: pix\|card}`) |
+| GET  | `/api/favorites` | Rotas favoritas do usuário |
+| POST | `/api/favorites` | Salvar rota favorita (`{label, pickup, dropoff}`) |
+| DELETE | `/api/favorites/:id` | Remover rota favorita |
+| POST | `/api/driver/location` | Motorista compartilha localização (`{lat, lng, available}`) |
+| POST | `/api/driver/offline` | Motorista fica offline |
+| GET  | `/api/drivers/nearby?lat=&lng=` | Motoristas parceiros próximos (distância/ETA) |
 
 Erros seguem o formato `{ "error": { "code": "...", "message": "..." } }`.
 

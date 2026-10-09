@@ -4,7 +4,7 @@
 // where per-account isolation is enforced (P003).
 
 import { estimateTrip } from '../lib/fare.js';
-import { assertCoord } from '../lib/geo.js';
+import { parsePlace } from '../lib/places.js';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { publicRide } from './serialize.js';
 
@@ -15,18 +15,6 @@ const TRANSITIONS = {
   complete: { from: ['in_progress'], to: 'completed', actor: 'driver' },
   cancel: { from: ['requested', 'accepted'], to: 'cancelled', actor: 'either' },
 };
-
-function parsePlace(place, name) {
-  if (!place || typeof place !== 'object') {
-    throw badRequest(`Campo obrigatório ausente: ${name}.`, 'missing_place');
-  }
-  const label = String(place.label ?? '').trim();
-  if (label.length < 2) throw badRequest(`Informe um local válido em ${name}.`, 'invalid_label');
-  const lat = Number(place.lat);
-  const lng = Number(place.lng);
-  assertCoord(name, lat, lng);
-  return { label, lat, lng };
-}
 
 export function createRidesService({ rides, config, payments = null, now = () => new Date() }) {
   function estimate({ pickup, dropoff }) {

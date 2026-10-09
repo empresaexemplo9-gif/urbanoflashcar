@@ -11,6 +11,12 @@ export const config = {
   // Session lifetime in milliseconds (default 7 days).
   sessionTtlMs: Number(process.env.SESSION_TTL_MS) || 7 * 24 * 60 * 60 * 1000,
 
+  // How recent a driver's shared location must be to count as "online" when
+  // searching for nearby partners (default 5 minutes), and the default search
+  // radius in km.
+  driverFreshnessMs: Number(process.env.DRIVER_FRESHNESS_MS) || 5 * 60 * 1000,
+  nearbyRadiusKm: Number(process.env.NEARBY_RADIUS_KM) || 10,
+
   // Deterministic fare model (cents of R$). Tunable, but fixed per request so
   // estimates are reproducible and testable (P009).
   fare: {
