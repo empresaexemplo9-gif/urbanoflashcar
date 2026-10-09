@@ -123,10 +123,15 @@ $('#register-form').addEventListener('submit', async (e) => {
 });
 
 $('#logout-btn').addEventListener('click', async () => {
+  // Go offline before the token is invalidated, otherwise the driver stays
+  // visible to riders until the freshness window expires.
+  if (presence.online) {
+    try { await api('/driver/offline', { method: 'POST' }); } catch { /* ignore */ }
+  }
+  stopPresence();
   try { await api('/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
   state.token = null; state.user = null;
   localStorage.removeItem(TOKEN_KEY);
-  stopPresence();
   render();
 });
 
@@ -334,7 +339,12 @@ function clearMaps() {
 }
 
 function readPlaces() {
-  const num = (n) => Number($(`[name="${n}"]`).value);
+  // Blank fields must stay invalid: Number('') is 0, which is a real coordinate
+  // (Gulf of Guinea) and would slip past the NaN guards, so map empty to NaN.
+  const num = (n) => {
+    const raw = $(`[name="${n}"]`).value.trim();
+    return raw === '' ? NaN : Number(raw);
+  };
   return {
     pickup: { label: $('[name="pickup-label"]').value.trim(), lat: num('pickup-lat'), lng: num('pickup-lng') },
     dropoff: { label: $('[name="dropoff-label"]').value.trim(), lat: num('dropoff-lat'), lng: num('dropoff-lng') },
@@ -428,7 +438,8 @@ async function deleteFavorite(id) {
 
 $('#save-fav-btn').addEventListener('click', async () => {
   const places = readPlaces();
-  if (!places.pickup.label || !places.dropoff.label || Number.isNaN(places.pickup.lat) || Number.isNaN(places.dropoff.lat)) {
+  const invalid = (p) => !p.label || Number.isNaN(p.lat) || Number.isNaN(p.lng);
+  if (invalid(places.pickup) || invalid(places.dropoff)) {
     return toast('Defina origem e destino antes de salvar.', 'err');
   }
   const label = window.prompt('Nome da rota favorita:', `${places.pickup.label} → ${places.dropoff.label}`);

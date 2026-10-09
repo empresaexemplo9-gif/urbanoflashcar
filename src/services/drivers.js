@@ -58,18 +58,16 @@ export function createDriversService({ driverStatus, config, now = () => new Dat
     return driverStatus
       .listAvailableWithLocation(sinceIso)
       .filter((d) => d.user_id !== user.id) // don't list yourself
-      .map((d) => {
-        const dist = distanceKm(lat, lng, d.lat, d.lng);
-        return {
-          driverId: d.user_id,
-          name: d.name,
-          distanceKm: round(dist, 2),
-          etaMin: round((dist / avgSpeed) * 60, 0),
-        };
-      })
-      .filter((d) => d.distanceKm <= radius)
-      .sort((a, b) => a.distanceKm - b.distanceKm)
-      .slice(0, max);
+      .map((d) => ({ row: d, dist: distanceKm(lat, lng, d.lat, d.lng) }))
+      .filter((d) => d.dist <= radius) // filter on the exact distance, not the rounded one
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, max)
+      .map((d) => ({
+        driverId: d.row.user_id,
+        name: d.row.name,
+        distanceKm: round(d.dist, 2), // round only for display
+        etaMin: round((d.dist / avgSpeed) * 60, 0),
+      }));
   }
 
   return { setLocation, goOffline, nearby };

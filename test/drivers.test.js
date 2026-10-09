@@ -7,6 +7,7 @@ import { openDatabase } from '../src/db.js';
 import { createDriverStatusRepo } from '../src/repositories/driverStatus.js';
 import { createDriversService } from '../src/services/drivers.js';
 import { config as baseConfig } from '../src/config.js';
+import { distanceKm } from '../src/lib/geo.js';
 
 // Reference pickup (Av. Paulista) and points at known-ish distances.
 const PICKUP = { lat: -23.5614, lng: -46.6559 };
@@ -105,5 +106,40 @@ test('stale driver locations are not returned', () => {
   const rider = { id: 999, role: 'rider' };
   const fresh = svc.nearby(rider, { lat: PICKUP.lat, lng: PICKUP.lng });
   assert.equal(fresh.length, 0, 'a 10-min-old location is stale');
+  db.close();
+});
+
+// The radius must filter on the exact distance, not the 2-decimal display
+// value: a driver at 10.004 km rounds to 10.00 and must still be excluded
+// from a 10 km radius.
+test('a driver just outside the radius is excluded despite rounding', () => {
+  const db = openDatabase(':memory:');
+  // Find a driver point whose exact distance to PICKUP rounds DOWN to 2
+  // decimals (so round(d,2) < d). Only then does the boundary bug show.
+  let point = null;
+  let dist = 0;
+  for (let step = 1; step <= 2000 && !point; step += 1) {
+    const cand = { lat: PICKUP.lat + step * 0.0005, lng: PICKUP.lng };
+    const d = distanceKm(PICKUP.lat, PICKUP.lng, cand.lat, cand.lng);
+    if (d > Math.round(d * 100) / 100) { point = cand; dist = d; } // rounds down
+  }
+  assert.ok(point, 'found a point whose distance rounds down');
+
+  db.prepare("INSERT INTO users (email, name, role, password, created_at) VALUES ('edge@ex.com','Edge','driver','x', ?)")
+    .run(new Date().toISOString());
+  const driverId = Number(db.prepare('SELECT id FROM users').get().id);
+  db.prepare('INSERT INTO driver_status (user_id, available, lat, lng, updated_at) VALUES (?, 1, ?, ?, ?)')
+    .run(driverId, point.lat, point.lng, new Date().toISOString());
+
+  const svc = createDriversService({
+    driverStatus: createDriverStatusRepo(db),
+    config: baseConfig,
+    now: () => new Date(),
+  });
+  // Radius = the rounded display distance, which is strictly less than the
+  // exact distance. The driver must NOT appear.
+  const radiusKm = Math.round(dist * 100) / 100;
+  const out = svc.nearby({ id: 999, role: 'rider' }, { lat: PICKUP.lat, lng: PICKUP.lng, radiusKm });
+  assert.equal(out.length, 0, 'exact distance exceeds the radius, so the driver is excluded');
   db.close();
 });
