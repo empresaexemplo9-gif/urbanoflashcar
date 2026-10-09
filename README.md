@@ -13,6 +13,9 @@ código recuperado (veja [`DELIVERIES.md`](./DELIVERIES.md)).
   tempo), solicitação, listagem, cancelamento.
 - **Ciclo do motorista** — corridas disponíveis → aceitar → iniciar → concluir,
   com transições de estado validadas.
+- **Cobrança resiliente** — ao concluir a corrida, a tarifa é cobrada por um
+  gateway simulado com idempotência (não cobra em dobro), tolerância a
+  indisponibilidade/timeout e retentativa que preserva o trabalho.
 - **Isolamento por conta** — um passageiro não vê nem altera a corrida de outro.
 - **Continuidade de dados** — tudo persiste em SQLite e sobrevive a reinícios.
 
@@ -47,7 +50,7 @@ e o modelo de tarifa (`FARE_BASE_CENTS`, `FARE_PER_KM_CENTS`,
 ## Testar
 
 ```bash
-npm test            # 25 testes: unidade (tarifa/geo) + integração (API/dados/permissões)
+npm test            # 35 testes: unidade (tarifa/geo/cobrança) + integração (API/dados/permissões)
 ```
 
 ## API
@@ -66,8 +69,10 @@ npm test            # 25 testes: unidade (tarifa/geo) + integração (API/dados/
 | GET  | `/api/rides/:id` | Detalhe (dono ou motorista designado) |
 | POST | `/api/rides/:id/accept` | Motorista aceita |
 | POST | `/api/rides/:id/start` | Motorista inicia |
-| POST | `/api/rides/:id/complete` | Motorista conclui |
+| POST | `/api/rides/:id/complete` | Motorista conclui (gera a cobrança) |
 | POST | `/api/rides/:id/cancel` | Passageiro ou motorista cancela |
+| GET  | `/api/rides/:id/charge` | Estado da cobrança da corrida |
+| POST | `/api/rides/:id/charge/retry` | Retentar cobrança que falhou |
 
 Erros seguem o formato `{ "error": { "code": "...", "message": "..." } }`.
 

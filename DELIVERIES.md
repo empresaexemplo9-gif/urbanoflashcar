@@ -27,9 +27,9 @@ analisado (rides). O modelo de dados, os contratos e as regras aqui são
 | **P003** Isolamento por conta | Proposta | Checagem de dono no serviço + escopo por id no repositório | `test/rides.test.js` → "isolation", "only the assigned driver" |
 | **P002** Dados e continuidade | Proposta | Persistência em SQLite; sobrevive a reinício | `test/rides.test.js` + verificação manual de restart (ver abaixo) |
 | **P005** Jornadas e navegação | Pistas estáticas; comportamento a validar | Jornada completa estimar→solicitar→acompanhar; UI web acessível | `test/rides.test.js` (ciclo completo) + UI em `public/` |
-| **P009** Medir qualidade | Requisito de produto | Suíte de 25 testes (sucesso, erro, permissão); `/api/health` | `npm test` |
+| **P009** Medir qualidade | Requisito de produto | Suíte de 35 testes (sucesso, erro, permissão); `/api/health` | `npm test` |
 | **P010** Publicar com recuperação | Requisito de produto | Dockerfile, volume de dados, health check, shutdown gracioso | `Dockerfile`, `src/server.js` |
-| **P004** Integrações e sincronização | Proposta; **não** no escopo deste MVP | — (hipótese; sem integração externa adicionada para não inventar evidência) | — |
+| **P004** Integrações e sincronização | Proposta | Cobrança via **gateway simulado** injetável: sucesso, indisponibilidade, timeout, retentativa idempotente; estado da sincronização visível | `test/billing.test.js` (10 casos) |
 | **P007** Compatibilidade do app | Proposta; **não** no escopo | — (o alvo é web; app nativo seria outra trilha) | — |
 | **P008** Prototipar diferencial | Hipótese | — (requer comparação com alternativas reais e usuários) | — |
 | **P001 / N001–N003** Validar com usuários | Requisito de descoberta | Não automatizável em código; depende de pesquisa com público | — |
@@ -37,9 +37,17 @@ analisado (rides). O modelo de dados, os contratos e as regras aqui são
 Itens sem teste são explicitamente **fora do escopo deste MVP** e permanecem
 como hipóteses a validar — não foram marcados como concluídos.
 
+> **Sobre P004 (honestidade de evidência):** o gateway de pagamento é
+> **simulado** (`src/lib/paymentGateway.js`), não uma integração com provedor
+> real. O que está implementado e testado são as *regras de resiliência*
+> (idempotência, tolerância a falha, retentativa, estado visível). Conectar um
+> provedor real — com credenciais e webhooks — continua sendo trabalho futuro;
+> o gateway é injetável justamente para permitir essa troca sem alterar as
+> regras de negócio.
+
 ## Verificações executadas nesta entrega
 
-1. `npm test` → **25/25** testes passam (unidade + integração).
+1. `npm test` → **35/35** testes passam (unidade + integração).
 2. Servidor real iniciado: `GET /api/health` responde `{"status":"ok"}`.
 3. Estáticos servidos com `Content-Type` correto (`/`, `/app.js`).
 4. Jornada ponta a ponta via HTTP: estimar → passageiro solicita → motorista
@@ -47,6 +55,9 @@ como hipóteses a validar — não foram marcados como concluídos.
 5. Isolamento: outro passageiro recebe **404** ao buscar corrida alheia.
 6. Continuidade: após reiniciar o servidor sobre o mesmo arquivo SQLite, o
    histórico da corrida (status `completed`) permaneceu.
+7. Cobrança: concluir a corrida gerou cobrança `paid`; com gateway indisponível
+   a corrida continuou `completed` e a cobrança ficou `failed` e retentável;
+   gateway instável recuperou na retentativa; cobrar duas vezes é bloqueado.
 
 ## Checklist de publicação (P010)
 
@@ -61,4 +72,5 @@ como hipóteses a validar — não foram marcados como concluídos.
 
 - Confirmar público-alvo e a jornada de maior valor com usuários reais.
 - Validar estados vazios, erros e permissões em sessão autorizada de produção.
-- Definir integrações externas (pagamento, mapa/geocoder) antes de P004.
+- Conectar provedor de pagamento real (o gateway atual é simulado) e um
+  geocoder/mapa real; hoje as coordenadas vêm de presets ou entrada manual.
