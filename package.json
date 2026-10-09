@@ -1,6 +1,6 @@
 {
   "name": "urbanoflashcar",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "UrbanoFlashCar — plataforma própria de corridas urbanas (MVP verificável).",
   "type": "module",
   "private": true,
@@ -41,20 +41,32 @@
       "output": "dist-desktop"
     },
     "publish": [
-      { "provider": "github", "owner": "empresaexemplo9-gif", "repo": "urbanoflashcar" }
+      {
+        "provider": "github",
+        "owner": "empresaexemplo9-gif",
+        "repo": "urbanoflashcar",
+        "releaseType": "release"
+      }
     ],
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Network",
       "icon": "public/icons/icon-512.png",
       "maintainer": "UrbanoFlashCar <dev@urbanoflashcar.app>"
     },
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "public/icons/icon-512.png"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "category": "public.app-category.travel",
       "icon": "public/icons/icon-512.png"
     }
