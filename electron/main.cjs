@@ -9,6 +9,11 @@ const { app, BrowserWindow, shell } = require('electron');
 const { fork } = require('node:child_process');
 const path = require('node:path');
 
+// A STABLE localhost port keeps the web origin constant across launches, so the
+// session token the UI stores in localStorage (which is scoped by origin) and
+// the service-worker caches survive restarts. Override with UFC_PORT if needed.
+const DEFAULT_PORT = Number(process.env.UFC_PORT) || 31977;
+
 let serverProc = null;
 let serverPort = null;
 
@@ -22,7 +27,7 @@ function startEmbeddedServer() {
         ELECTRON_RUN_AS_NODE: '1',
         DATABASE_FILE: dbFile,
         HOST: '127.0.0.1',
-        PORT: '0',
+        PORT: String(DEFAULT_PORT),
       },
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
@@ -89,24 +94,40 @@ function createWindow(url) {
   return win;
 }
 
-app.whenReady().then(async () => {
-  let url;
-  try {
-    url = await resolveAppUrl();
-  } catch (err) {
-    console.error('Falha ao iniciar:', err);
-    url = errorPage(err.message);
-  }
-  console.log('[ufc-desktop] ready at', url);
-  createWindow(url);
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow(url);
+// Single-instance lock: a second launch focuses the running window instead of
+// starting another server on a different port. Together with the fixed port
+// above this guarantees a single, stable origin for the whole app lifetime.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    const [w] = BrowserWindow.getAllWindows();
+    if (w) {
+      if (w.isMinimized()) w.restore();
+      w.focus();
+    }
   });
-});
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+  app.whenReady().then(async () => {
+    let url;
+    try {
+      url = await resolveAppUrl();
+    } catch (err) {
+      console.error('Falha ao iniciar:', err);
+      url = errorPage(err.message);
+    }
+    console.log('[ufc-desktop] ready at', url);
+    createWindow(url);
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow(url);
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+}
 
 app.on('quit', () => {
   if (serverProc) { try { serverProc.kill(); } catch { /* already gone */ } }

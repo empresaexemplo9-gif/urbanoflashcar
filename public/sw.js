@@ -6,7 +6,7 @@
 //     with a network update, and a navigation falls back to the cached shell
 //     when offline.
 
-const CACHE = 'ufc-shell-v1';
+const CACHE = 'ufc-shell-v2';
 const SHELL = [
   '/',
   '/index.html',
@@ -17,6 +17,7 @@ const SHELL = [
   '/icons/icon-512.png',
   '/icons/maskable-512.png',
   '/icons/apple-touch-icon.png',
+  '/icons/favicon-32.png',
 ];
 
 self.addEventListener('install', (event) => {

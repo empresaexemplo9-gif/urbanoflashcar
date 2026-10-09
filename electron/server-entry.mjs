@@ -12,6 +12,13 @@ import { config } from '../src/config.js';
 const db = openDatabase(config.databaseFile);
 const server = createServer(createApp(db, config));
 
+server.on('error', (err) => {
+  // e.g. EADDRINUSE on the fixed port — report it so the app can show a clear
+  // message instead of a different (session-breaking) origin.
+  console.error(`falha ao escutar: ${err.code || err.message}`);
+  process.exit(1);
+});
+
 server.listen(Number(process.env.PORT) || 0, process.env.HOST || '127.0.0.1', () => {
   const { port } = server.address();
   if (process.send) process.send({ port });
