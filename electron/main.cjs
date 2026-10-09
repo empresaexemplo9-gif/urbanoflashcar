@@ -106,6 +106,19 @@ function createWindow(url) {
     },
   });
   if (typeof win.removeMenu === 'function') win.removeMenu();
+
+  // Keep basic recovery shortcuts even without a menu: reload (Ctrl/Cmd+R) and
+  // toggle DevTools (Ctrl+Shift+I / Cmd+Alt+I / F12), so a user is never stuck.
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    const key = (input.key || '').toLowerCase();
+    const mod = input.control || input.meta;
+    if (mod && key === 'r') { win.webContents.reloadIgnoringCache(); event.preventDefault(); }
+    else if (key === 'f12' || (mod && input.shift && key === 'i') || (input.meta && input.alt && key === 'i')) {
+      win.webContents.toggleDevTools(); event.preventDefault();
+    }
+  });
+
   win.loadURL(url);
   // Open any external link in the system browser, not inside the app window.
   win.webContents.setWindowOpenHandler(({ url: target }) => {
