@@ -6,7 +6,12 @@
 //     with a network update, and a navigation falls back to the cached shell
 //     when offline.
 
-const CACHE = 'ufc-shell-v7';
+// The version is injected by the server (see the /sw.js route) so the worker's
+// bytes — and the cache name — change on every release. That guarantees the
+// installed PWA re-fetches the whole shell and updates with the platform. When
+// the file is served statically without substitution, it falls back to 'dev'.
+const APP_VERSION = '__APP_VERSION__'.includes('APP_VERSION') ? 'dev' : '__APP_VERSION__';
+const CACHE = `ufc-shell-${APP_VERSION}`;
 const SHELL = [
   '/',
   '/index.html',

@@ -22,6 +22,9 @@ código recuperado (veja [`DELIVERIES.md`](./DELIVERIES.md)).
   cartão físico (maquininha)** e o motorista confirma o recebimento no app.
 - **Isolamento por conta** — um passageiro não vê nem altera a corrida de outro.
 - **Continuidade de dados** — tudo persiste em SQLite e sobrevive a reinícios.
+- **Atualização automática** — o app instalado (PWA no celular/desktop e o app
+  de desktop) acompanha a plataforma: ao publicar uma nova versão, os apps
+  instalados se atualizam sozinhos, sem reinstalar.
 
 ## Arquitetura (camadas com contrato explícito)
 
@@ -72,7 +75,7 @@ carregarem (offline), o app cai no modo de **presets/coordenadas manuais**.
 ## Testar
 
 ```bash
-npm test            # 49 testes: unidade (tarifa/geo) + integração (API/dados/permissões/pagamento) + PWA
+npm test            # 52 testes: unidade (tarifa/geo) + integração (API/dados/permissões/pagamento) + PWA + versão
 ```
 
 ## API
@@ -80,6 +83,7 @@ npm test            # 49 testes: unidade (tarifa/geo) + integração (API/dados/
 | Método | Rota | Descrição |
 |---|---|---|
 | GET  | `/api/health` | Verificação de saúde |
+| GET  | `/api/version` | Versão da plataforma (usada pela atualização automática) |
 | POST | `/api/auth/register` | Criar conta (`rider`/`driver`) |
 | POST | `/api/auth/login` | Autenticar, retorna token |
 | POST | `/api/auth/logout` | Encerrar sessão |
@@ -117,6 +121,13 @@ A interface é uma **Progressive Web App** instalável — basta acessar o site:
 Funciona offline para a casca do app (o conteúdo das corridas exige rede).
 Requer HTTPS em produção (ou `localhost` em desenvolvimento).
 
+**Atualização automática:** o `service worker` é servido com a versão da
+plataforma embutida (rota `/sw.js`), então seus bytes mudam a cada versão e o
+nome do cache (`ufc-shell-<versão>`) também. Quando você publica uma nova
+versão, o navegador instala o novo worker, o app recarrega sozinho e passa a
+usar a casca nova — o PWA instalado nunca fica numa versão velha. O rodapé
+mostra a versão em uso (via `/api/version`).
+
 Os ícones são gerados a partir de `assets/brand/taxi.webp` com `npm run icons`
 (requer ImageMagick); os PNGs já ficam versionados em `public/icons/`.
 
@@ -140,6 +151,13 @@ npm run desktop:build:mac     # .dmg — gere no macOS
 
 Saída em `dist-desktop/`. Cada plataforma gera seu instalador na própria
 plataforma (ou em CI); o build de Linux foi verificado neste projeto.
+
+**Atualização automática (desktop):** o app usa `electron-updater`. Ao abrir,
+ele consulta as *GitHub Releases* do repositório; havendo uma versão mais
+nova, baixa em segundo plano e instala ao sair. Assim o app de desktop — que
+embute servidor + interface — acompanha a plataforma sem reinstalação manual.
+Isso vale para o build empacotado/publicado (via o workflow de release); em
+desenvolvimento (`npm run desktop`) a checagem fica desativada.
 
 ## Publicar (Docker)
 

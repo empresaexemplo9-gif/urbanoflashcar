@@ -9,6 +9,27 @@ const { app, BrowserWindow, shell } = require('electron');
 const { fork } = require('node:child_process');
 const path = require('node:path');
 
+// Keep the installed desktop app in lockstep with the platform: check GitHub
+// Releases on launch and install the new version on quit. Only meaningful for
+// a packaged build that runs the embedded server (the bundled binary carries
+// both server and UI); a hosted build (UFC_SERVER_URL) updates its UI through
+// the web auto-update path instead.
+function setupDesktopAutoUpdate() {
+  if (!app.isPackaged || process.env.UFC_SERVER_URL) return;
+  try {
+    const { autoUpdater } = require('electron-updater');
+    autoUpdater.autoDownload = true;
+    autoUpdater.on('error', (err) => console.error('[ufc-update]', err?.message || err));
+    autoUpdater.on('update-available', (info) => console.log('[ufc-update] nova versão', info?.version));
+    autoUpdater.on('update-downloaded', (info) => console.log('[ufc-update] baixada', info?.version, '— instala ao sair'));
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => console.error('[ufc-update]', err?.message || err));
+    // Re-check periodically for long-running sessions (every 6 hours).
+    setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
+  } catch (err) {
+    console.error('[ufc-update] indisponível:', err?.message || err);
+  }
+}
+
 // A STABLE localhost port keeps the web origin constant across launches, so the
 // session token the UI stores in localStorage (which is scoped by origin) and
 // the service-worker caches survive restarts. Override with UFC_PORT if needed.
@@ -119,6 +140,7 @@ if (!gotLock) {
     }
     console.log('[ufc-desktop] ready at', url);
     createWindow(url);
+    setupDesktopAutoUpdate();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow(url);
     });
