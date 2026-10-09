@@ -209,13 +209,18 @@ async function resolveCurrentPlace() {
   return { label: pos.approx ? `${base} (aprox.)` : base, lat: pos.lat, lng: pos.lng };
 }
 // Fill the pickup with the real current location. `silent` suppresses the
-// error toast (used for the automatic fill on opening a new ride).
-async function useCurrentLocation({ silent = false } = {}) {
+// error toast (used for the automatic fill on opening a new ride). With
+// `onlyIfEmpty`, the pickup is re-checked AFTER the async lookup and left
+// alone if the rider meanwhile chose one (favorite/preset/autocomplete), so a
+// slow GPS/IP result never overwrites a deliberate choice.
+const pickupIsEmpty = () => $('[name="pickup-lat"]').value.trim() === '';
+async function useCurrentLocation({ silent = false, onlyIfEmpty = false } = {}) {
   const place = await resolveCurrentPlace();
   if (!place) {
     if (!silent) toast('Não foi possível obter sua localização.', 'err');
     return false;
   }
+  if (onlyIfEmpty && !pickupIsEmpty()) return false; // rider set it while we resolved
   setSearchValue('pickup', place.label);
   mapsSetPlace('pickup', place);
   return true;
@@ -433,9 +438,9 @@ function showRiderScreen(which) {
 $('#new-ride-btn').addEventListener('click', () => {
   showRiderScreen('newride');
   // Always start from the user's real current location: auto-fill the pickup
-  // when it is empty (don't clobber a pickup already chosen, e.g. a favorite).
-  const hasPickup = $('[name="pickup-lat"]').value.trim() !== '';
-  if (!hasPickup) useCurrentLocation({ silent: true });
+  // when it is empty. onlyIfEmpty re-checks after the async lookup so a pickup
+  // chosen meanwhile (favorite/preset/autocomplete) is never overwritten.
+  if (pickupIsEmpty()) useCurrentLocation({ silent: true, onlyIfEmpty: true });
 });
 $('#back-home-btn').addEventListener('click', () => showRiderScreen('home'));
 
