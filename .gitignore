@@ -7,6 +7,9 @@ data/
 *.db-shm
 *.db-wal
 
+# Desktop build output
+dist-desktop/
+
 # Logs & OS cruft
 *.log
 .DS_Store

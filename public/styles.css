@@ -37,6 +37,7 @@ body {
 }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.1rem; }
 .logo { font-size: 1.4rem; }
+.topbar-actions { display: flex; align-items: center; gap: 12px; }
 .session-box { display: flex; align-items: center; gap: 12px; }
 .session-user { color: var(--muted); font-size: 0.9rem; }
 

@@ -276,8 +276,37 @@ function escapeHtml(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// --- PWA: service worker + install prompt -------------------------------
+function setupPwa() {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => { /* non-fatal */ });
+    });
+  }
+
+  // Custom install button (Chromium browsers fire beforeinstallprompt).
+  let deferredPrompt = null;
+  const btn = $('#install-btn');
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    if (btn) btn.hidden = false;
+  });
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      btn.hidden = true;
+    });
+  }
+  window.addEventListener('appinstalled', () => { if (btn) btn.hidden = true; });
+}
+
 // --- Boot ---------------------------------------------------------------
 async function boot() {
+  setupPwa();
   setupAuthTabs();
   setupPresets();
   if (state.token) {
