@@ -44,25 +44,26 @@ npm run dev         # com --watch
 ```
 
 Variáveis de ambiente úteis: `PORT`, `HOST`, `DATABASE_FILE`, `SESSION_TTL_MS`,
-`GOOGLE_MAPS_API_KEY` (localização real; veja abaixo), e o modelo de tarifa
-(`FARE_BASE_CENTS`, `FARE_PER_KM_CENTS`, `FARE_PER_MIN_CENTS`,
-`FARE_MINIMUM_CENTS`, `FARE_AVG_SPEED_KMH`).
+e o modelo de tarifa (`FARE_BASE_CENTS`, `FARE_PER_KM_CENTS`,
+`FARE_PER_MIN_CENTS`, `FARE_MINIMUM_CENTS`, `FARE_AVG_SPEED_KMH`).
 
-## Localização real (Google Maps)
+## Localização real (gratuita, sem chave)
 
-Defina `GOOGLE_MAPS_API_KEY` (ou `UFC_MAPS_API_KEY`) para ativar **mapa +
-autocomplete de endereços + "usar minha localização"** na tela de solicitar
-corrida. Sem a chave, o app cai no modo de **presets/coordenadas manuais**
-(tudo continua funcionando).
+A tela de solicitar corrida usa **mapa real + autocomplete de endereços +
+"usar minha localização"** com serviços **gratuitos e sem API key**:
 
-```bash
-GOOGLE_MAPS_API_KEY="AIza..." npm start
-```
+- **Mapa:** [Leaflet](https://leafletjs.com/) + tiles do
+  [OpenStreetMap](https://www.openstreetmap.org/).
+- **Busca/geocodificação de endereços:** [Photon](https://photon.komoot.io/)
+  (projeto baseado em OSM).
 
-A chave é do lado do cliente (servida em `GET /api/config`). No Google Cloud,
-habilite **Maps JavaScript API**, **Places API** e **Geocoding API**, e
-**restrinja a chave por referenciador HTTP** (seus domínios). No app de desktop,
-a chave é lida do ambiente em que o app é iniciado (`GOOGLE_MAPS_API_KEY`).
+Não é preciso cadastro, cartão nem chave — funciona de imediato (inclusive no
+app de desktop), bastando acesso à internet. Se os serviços/Leaflet não
+carregarem (offline), o app cai no modo de **presets/coordenadas manuais**.
+
+> **Uso em escala:** OSM/Photon são serviços públicos de uso justo. Para alto
+> volume em produção, considere **auto-hospedar** o Photon/Nominatim e um
+> servidor de tiles (ou um provedor), respeitando as políticas de uso do OSM.
 
 ## Testar
 
