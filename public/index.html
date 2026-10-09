@@ -2,20 +2,35 @@
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>UrbanoFlashCar</title>
     <meta name="description" content="Plataforma própria de corridas urbanas." />
+
+    <!-- PWA: installable on desktop and mobile across operating systems -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0f1419" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="UrbanoFlashCar" />
+
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <header class="topbar">
       <div class="brand">
-        <span class="logo" aria-hidden="true">⚡</span>
+        <img class="logo" src="/icons/icon-192.png" alt="" width="28" height="28" />
         <span>UrbanoFlashCar</span>
       </div>
-      <div id="session-box" class="session-box" hidden>
-        <span id="session-user" class="session-user"></span>
-        <button id="logout-btn" type="button" class="btn btn-ghost">Sair</button>
+      <div class="topbar-actions">
+        <button id="install-btn" type="button" class="btn btn-ghost" hidden>Instalar app</button>
+        <div id="session-box" class="session-box" hidden>
+          <span id="session-user" class="session-user"></span>
+          <button id="logout-btn" type="button" class="btn btn-ghost">Sair</button>
+        </div>
       </div>
     </header>
 

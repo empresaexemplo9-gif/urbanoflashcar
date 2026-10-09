@@ -50,7 +50,7 @@ e o modelo de tarifa (`FARE_BASE_CENTS`, `FARE_PER_KM_CENTS`,
 ## Testar
 
 ```bash
-npm test            # 35 testes: unidade (tarifa/geo/cobrança) + integração (API/dados/permissões)
+npm test            # 39 testes: unidade (tarifa/geo/cobrança) + integração (API/dados/permissões) + PWA
 ```
 
 ## API
@@ -75,6 +75,43 @@ npm test            # 35 testes: unidade (tarifa/geo/cobrança) + integração (
 | POST | `/api/rides/:id/charge/retry` | Retentar cobrança que falhou |
 
 Erros seguem o formato `{ "error": { "code": "...", "message": "..." } }`.
+
+## Instalar como aplicativo
+
+### PWA (celular e desktop, qualquer sistema operacional)
+
+A interface é uma **Progressive Web App** instalável — basta acessar o site:
+
+- **Android / Chrome / Edge:** menu → "Instalar app" / "Adicionar à tela inicial".
+- **iPhone / iPad (Safari):** Compartilhar → "Adicionar à Tela de Início".
+- **Windows / macOS / Linux (Chrome/Edge):** ícone "Instalar" na barra de endereço, ou o botão **"Instalar app"** no topo da página.
+
+Funciona offline para a casca do app (o conteúdo das corridas exige rede).
+Requer HTTPS em produção (ou `localhost` em desenvolvimento).
+
+Os ícones são gerados a partir de `assets/brand/taxi.webp` com `npm run icons`
+(requer ImageMagick); os PNGs já ficam versionados em `public/icons/`.
+
+### App de desktop (Electron) — Windows, macOS e Linux
+
+O app de desktop embute o próprio servidor (dados ficam na pasta de dados do
+usuário do sistema), então funciona sem configuração. Ele usa uma porta local
+fixa (`31977`, configurável via `UFC_PORT`) e trava de instância única, para
+manter uma origem estável — assim a sessão continua entre reinícios.
+Alternativamente, aponte para um servidor hospedado com `UFC_SERVER_URL`.
+
+```bash
+npm install            # instala electron + electron-builder (devDependencies)
+npm run desktop        # abre o app em uma janela nativa
+
+# Gerar instaladores:
+npm run desktop:build:linux   # AppImage + .deb   (gerável no Linux)
+npm run desktop:build:win     # instalador .exe (NSIS) — gere no Windows
+npm run desktop:build:mac     # .dmg — gere no macOS
+```
+
+Saída em `dist-desktop/`. Cada plataforma gera seu instalador na própria
+plataforma (ou em CI); o build de Linux foi verificado neste projeto.
 
 ## Publicar (Docker)
 
