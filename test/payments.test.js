@@ -88,6 +88,15 @@ test('the payment summary appears in the ride list', async () => {
   assert.equal(found.payment.method, 'pix');
 });
 
+test('completing again is idempotent and returns the same payment', async () => {
+  const { id, driver } = await completedRide();
+  const first = await srv.request('POST', `/api/rides/${id}/complete`, { token: driver.token });
+  const second = await srv.request('POST', `/api/rides/${id}/complete`, { token: driver.token });
+  assert.equal(second.status, 200);
+  assert.equal(second.body.ride.status, 'completed');
+  assert.equal(second.body.payment.id, first.body.payment.id);
+});
+
 test('another user cannot read the payment', async () => {
   const { id, driver } = await completedRide();
   await srv.request('POST', `/api/rides/${id}/complete`, { token: driver.token });

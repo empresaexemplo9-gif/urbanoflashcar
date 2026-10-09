@@ -50,7 +50,7 @@ e o modelo de tarifa (`FARE_BASE_CENTS`, `FARE_PER_KM_CENTS`,
 ## Testar
 
 ```bash
-npm test            # 37 testes: unidade (tarifa/geo) + integração (API/dados/permissões/pagamento) + PWA
+npm test            # 39 testes: unidade (tarifa/geo) + integração (API/dados/permissões/pagamento) + PWA
 ```
 
 ## API

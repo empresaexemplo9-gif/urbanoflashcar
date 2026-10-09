@@ -126,8 +126,28 @@ export function createRidesService({ rides, config, payments = null, now = () =>
 
   // Completing a ride opens a payment to be settled directly with the driver
   // (Pix or physical card). The driver confirms receipt afterwards.
+  //
+  // Idempotent and self-healing: if the ride is already completed (e.g. a
+  // previous attempt committed the status but failed before the payment was
+  // created, or data migrated from an older release) a party to the ride can
+  // call this again to (re)create the missing pending payment. settleRide is
+  // itself idempotent, so an existing payment is returned unchanged.
   function complete(user, id) {
-    const ride = transition(user, id, 'complete');
+    const existing = rides.findById(id);
+    if (!existing) throw notFound('Corrida não encontrada.', 'ride_not_found');
+
+    let rideRow;
+    if (existing.status === 'completed') {
+      if (existing.rider_id !== user.id && existing.driver_id !== user.id) {
+        throw notFound('Corrida não encontrada.', 'ride_not_found');
+      }
+      rideRow = existing;
+    } else {
+      transition(user, id, 'complete'); // validates actor + status transition
+      rideRow = rides.findById(id);
+    }
+
+    const ride = publicRide(rideRow);
     const payment = payments ? payments.settleRide(ride) : null;
     return { ride, payment };
   }

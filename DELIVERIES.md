@@ -48,7 +48,7 @@ como hipóteses a validar — não foram marcados como concluídos.
 
 ## Verificações executadas nesta entrega
 
-1. `npm test` → **37/37** testes passam (unidade + integração + pagamento + PWA).
+1. `npm test` → **39/39** testes passam (unidade + integração + pagamento + PWA).
 2. Servidor real iniciado: `GET /api/health` responde `{"status":"ok"}`.
 3. Estáticos servidos com `Content-Type` correto (`/`, `/app.js`).
 4. Jornada ponta a ponta via HTTP: estimar → passageiro solicita → motorista
