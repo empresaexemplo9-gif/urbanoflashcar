@@ -1,7 +1,22 @@
 // Central configuration. Values come from the environment with safe defaults
 // so the platform runs out of the box but is tunable for deployment (P010).
 
+import { readFileSync } from 'node:fs';
+
+// Single source of truth for the platform version: package.json. The web
+// shell, the service worker and the desktop app all report this same value so
+// the installed apps stay in lockstep with the platform (auto-update).
+function readVersion() {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    return pkg.version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
 export const config = {
+  version: readVersion(),
   port: Number(process.env.PORT) || 3000,
   host: process.env.HOST || '0.0.0.0',
 

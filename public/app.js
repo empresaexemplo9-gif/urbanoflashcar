@@ -635,13 +635,17 @@ function escapeHtml(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// --- PWA: service worker + install prompt -------------------------------
+// --- PWA: service worker + install prompt + auto-update -----------------
 function setupPwa() {
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').catch(() => { /* non-fatal */ });
+      navigator.serviceWorker
+        .register('/sw.js')
+        .then((reg) => setupAutoUpdate(reg))
+        .catch(() => { /* non-fatal */ });
     });
   }
+  watchPlatformVersion();
 
   // Custom install button (Chromium browsers fire beforeinstallprompt).
   let deferredPrompt = null;
@@ -661,6 +665,70 @@ function setupPwa() {
     });
   }
   window.addEventListener('appinstalled', () => { if (btn) btn.hidden = true; });
+}
+
+// Keep the installed app (PWA on mobile/desktop) in lockstep with the
+// platform. When the server ships a new version the service worker's bytes
+// change (see the /sw.js route), so a new worker installs; once it takes
+// control we reload once to pick up the new shell.
+function setupAutoUpdate(reg) {
+  let reloading = false;
+  const reloadOnce = () => {
+    if (reloading) return;
+    reloading = true;
+    window.location.reload();
+  };
+
+  // A new worker was found: when it finishes installing *and* a controller
+  // already exists (i.e. this is an update, not the first install), the new
+  // version is ready to take over.
+  reg.addEventListener('updatefound', () => {
+    const nw = reg.installing;
+    if (!nw) return;
+    nw.addEventListener('statechange', () => {
+      if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+        toast('Atualizando para a versão mais recente…', 'ok');
+      }
+    });
+  });
+
+  // The new worker took control (skipWaiting + clients.claim in sw.js): reload
+  // so the running page matches it. Guarded so the first install never loops.
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (navigator.serviceWorker.controller) reloadOnce();
+  });
+
+  // Check for a new worker periodically and whenever the app regains focus, so
+  // a long-open app still updates without being reopened.
+  const check = () => { reg.update().catch(() => {}); };
+  setInterval(check, 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+  window.addEventListener('online', check);
+}
+
+// Shows the running platform version and, as a fallback for environments
+// without a service worker, reloads when the server reports a newer one.
+let loadedVersion = null;
+async function watchPlatformVersion() {
+  const paint = (v) => { const el = $('#app-version'); if (el && v) el.textContent = `v${v}`; };
+  const poll = async () => {
+    try {
+      const { version } = await api('/version');
+      if (!version) return;
+      if (loadedVersion === null) { loadedVersion = version; paint(version); return; }
+      if (version !== loadedVersion) {
+        // A newer platform is live. The service worker handles the reload when
+        // present; otherwise reload directly so the app never lags behind.
+        if (!(navigator.serviceWorker && navigator.serviceWorker.controller)) {
+          toast('Atualizando para a versão mais recente…', 'ok');
+          setTimeout(() => window.location.reload(), 600);
+        }
+      }
+    } catch { /* offline: try again later */ }
+  };
+  await poll();
+  setInterval(poll, 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
 }
 
 // --- Boot ---------------------------------------------------------------

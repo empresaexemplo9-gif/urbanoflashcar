@@ -5,6 +5,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { Router, json } from './lib/http.js';
 import { unauthorized, badRequest } from './lib/errors.js';
 import { createUsersRepo } from './repositories/users.js';
@@ -54,6 +55,26 @@ export function createApp(db, config, { now } = {}) {
 
   // --- Health (P010) ---
   router.get('/api/health', () => ({ status: 'ok', time: (now?.() ?? new Date()).toISOString() }));
+
+  // --- Version: lets the installed apps (PWA + desktop) know the platform's
+  // current version and auto-update to it. ---
+  router.get('/api/version', () => ({ version: config.version }));
+
+  // Serve the service worker with the version injected, so its bytes change on
+  // every release. That makes the browser re-install the worker and, because
+  // the cache name is derived from the version, re-fetch the whole shell — the
+  // installed PWA updates together with the platform. Served no-store so the
+  // browser always re-checks it.
+  router.get('/sw.js', (ctx) => {
+    const src = readFileSync(join(PUBLIC_DIR, 'sw.js'), 'utf8').replace(/__APP_VERSION__/g, config.version);
+    ctx.res.writeHead(200, {
+      'Content-Type': 'application/javascript; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'Content-Length': Buffer.byteLength(src),
+      'Service-Worker-Allowed': '/',
+    });
+    ctx.res.end(src);
+  });
 
   // --- Auth (P003) ---
   router.post('/api/auth/register', (ctx) => json(201, { user: auth.register(ctx.body || {}) }));

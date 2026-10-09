@@ -162,6 +162,12 @@ input:focus, select:focus, button:focus-visible {
 .badge.completed { background: #233; color: var(--muted); }
 .badge.cancelled { background: #3a2323; color: var(--err); }
 
+.footer {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 18px; color: var(--muted); font-size: 0.8rem;
+}
+.app-version { color: var(--muted); font-variant-numeric: tabular-nums; }
+
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
   background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
