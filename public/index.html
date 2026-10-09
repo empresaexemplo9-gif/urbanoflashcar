@@ -23,13 +23,16 @@
           }
           if ('serviceWorker' in navigator) {
             navigator.serviceWorker.getRegistrations().then(function (regs) {
-              if (!regs.length) return;
+              if (!regs.length) return; // nothing to heal (also stops a reload loop)
+              // sessionStorage can itself throw when storage is disabled — the
+              // very case we are healing — so guard it and reload regardless.
+              var healed = false;
+              try { healed = sessionStorage.getItem('ufc-sw-healed') === '1'; } catch (e) {}
               Promise.all(regs.map(function (r) { return r.unregister(); })).then(function () {
-                if (!sessionStorage.getItem('ufc-sw-healed')) {
-                  try { sessionStorage.setItem('ufc-sw-healed', '1'); } catch (e) {}
-                  location.reload();
-                }
-              });
+                if (healed) return;
+                try { sessionStorage.setItem('ufc-sw-healed', '1'); } catch (e) {}
+                location.reload();
+              }).catch(function () {});
             }).catch(function () {});
           }
         } catch (e) { /* non-fatal */ }
