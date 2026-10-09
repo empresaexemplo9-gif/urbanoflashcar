@@ -6,6 +6,39 @@
     <title>UrbanoFlashCar</title>
     <meta name="description" content="Plataforma própria de corridas urbanas." />
 
+    <!-- Desktop (Electron) self-heal. The app is served by its own local
+         server on a fixed origin, so a leftover service worker from a previous
+         version could keep serving a stale shell and leave the UI unresponsive.
+         This runs from the always-fresh index.html, before app.js, and removes
+         any such worker/cache so the window always runs the installed build. -->
+    <script>
+      (function () {
+        try {
+          if (!/Electron/i.test(navigator.userAgent || '')) return;
+          var cleaned = false;
+          if (self.caches && caches.keys) {
+            caches.keys().then(function (keys) {
+              keys.forEach(function (k) { if (/^ufc-shell-/.test(k)) { cleaned = true; caches.delete(k); } });
+            }).catch(function () {});
+          }
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function (regs) {
+              if (!regs.length) return; // nothing to heal (also stops a reload loop)
+              // sessionStorage can itself throw when storage is disabled — the
+              // very case we are healing — so guard it and reload regardless.
+              var healed = false;
+              try { healed = sessionStorage.getItem('ufc-sw-healed') === '1'; } catch (e) {}
+              Promise.all(regs.map(function (r) { return r.unregister(); })).then(function () {
+                if (healed) return;
+                try { sessionStorage.setItem('ufc-sw-healed', '1'); } catch (e) {}
+                location.reload();
+              }).catch(function () {});
+            }).catch(function () {});
+          }
+        } catch (e) { /* non-fatal */ }
+      })();
+    </script>
+
     <!-- PWA: installable on desktop and mobile across operating systems -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#0f1419" />

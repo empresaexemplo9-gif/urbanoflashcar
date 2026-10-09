@@ -4,6 +4,17 @@
 const TOKEN_KEY = 'ufc_token';
 const $ = (sel) => document.querySelector(sel);
 
+// Safe storage: localStorage can throw at access time in some runtimes
+// (privacy modes, packaged webviews with storage disabled). A throw here must
+// never abort module evaluation and leave the UI unwired, so every access is
+// guarded and degrades to an in-memory fallback.
+let memToken = null;
+const store = {
+  get() { try { return localStorage.getItem(TOKEN_KEY); } catch { return memToken; } },
+  set(v) { memToken = v; try { localStorage.setItem(TOKEN_KEY, v); } catch { /* ignore */ } },
+  clear() { memToken = null; try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ } },
+};
+
 // A few preset locations (São Paulo) so the demo journey needs no geocoder.
 const PRESETS = [
   { label: 'Av. Paulista', lat: -23.5614, lng: -46.6559 },
@@ -14,7 +25,7 @@ const PRESETS = [
   { label: 'USP Butantã', lat: -23.5595, lng: -46.7313 },
 ];
 
-const state = { token: localStorage.getItem(TOKEN_KEY), user: null };
+const state = { token: store.get(), user: null };
 
 // --- API helper ---------------------------------------------------------
 async function api(path, { method = 'GET', body } = {}) {
@@ -96,7 +107,7 @@ $('#login-form').addEventListener('submit', async (e) => {
       body: { email: f.get('email'), password: f.get('password') },
     });
     state.token = token; state.user = user;
-    localStorage.setItem(TOKEN_KEY, token);
+    store.set(token);
     toast('Bem-vindo(a)!', 'ok');
     render();
   } catch (err) { toast(err.message, 'err'); }
@@ -116,7 +127,7 @@ $('#register-form').addEventListener('submit', async (e) => {
       body: { email: f.get('email'), password: f.get('password') },
     });
     state.token = token; state.user = user;
-    localStorage.setItem(TOKEN_KEY, token);
+    store.set(token);
     toast('Conta criada!', 'ok');
     render();
   } catch (err) { toast(err.message, 'err'); }
@@ -131,7 +142,7 @@ $('#logout-btn').addEventListener('click', async () => {
   stopPresence();
   try { await api('/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
   state.token = null; state.user = null;
-  localStorage.removeItem(TOKEN_KEY);
+  store.clear();
   render();
 });
 
@@ -635,9 +646,14 @@ function escapeHtml(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// Running inside the Electron desktop shell? There the UI is served by the
+// app's own local server, so the service worker adds nothing and only risks
+// serving a stale shell on the fixed localhost origin — skip it there.
+const IS_ELECTRON = /Electron/i.test(navigator.userAgent || '');
+
 // --- PWA: service worker + install prompt + auto-update -----------------
 function setupPwa() {
-  if ('serviceWorker' in navigator) {
+  if ('serviceWorker' in navigator && !IS_ELECTRON) {
     window.addEventListener('load', () => {
       navigator.serviceWorker
         .register('/sw.js')
@@ -765,7 +781,7 @@ async function boot() {
       state.user = user;
     } catch {
       state.token = null;
-      localStorage.removeItem(TOKEN_KEY);
+      store.clear();
     }
   }
   try { render(); } catch (err) { console.error('[boot:render]', err); }
