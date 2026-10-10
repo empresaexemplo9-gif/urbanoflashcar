@@ -19,6 +19,7 @@ import { createRidesService } from './services/rides.js';
 import { createPaymentsService } from './services/payments.js';
 import { createFavoritesService } from './services/favorites.js';
 import { createDriversService } from './services/drivers.js';
+import { createGeoService } from './services/geo.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', 'public');
@@ -29,7 +30,7 @@ function bearer(req) {
   return m ? m[1].trim() : null;
 }
 
-export function createApp(db, config, { now } = {}) {
+export function createApp(db, config, { now, fetchImpl } = {}) {
   const users = createUsersRepo(db);
   const sessions = createSessionsRepo(db);
   const rides = createRidesRepo(db);
@@ -42,6 +43,7 @@ export function createApp(db, config, { now } = {}) {
   const rideService = createRidesService({ rides, config, payments, now });
   const favoritesService = createFavoritesService({ favorites: favoritesRepo, now });
   const driversService = createDriversService({ driverStatus: driverStatusRepo, config, now });
+  const geoService = createGeoService({ config, fetchImpl: fetchImpl ?? globalThis.fetch });
 
   const router = new Router();
 
@@ -90,6 +92,22 @@ export function createApp(db, config, { now } = {}) {
 
   // --- Fare estimate (public helper for the journey) ---
   router.post('/api/estimate', (ctx) => rideService.estimate(ctx.body || {}));
+
+  // --- Real location (public helpers), proxied same-origin so the browser
+  // never calls a third party directly. See src/services/geo.js. ---
+  // Approximate position from the caller's IP — the device-GPS fallback.
+  router.get('/api/geo/ip', async (ctx) => ({ place: await geoService.fromRequest(ctx.req) }));
+  // Address autocomplete.
+  router.get('/api/geo/search', async (ctx) => ({
+    places: await geoService.search(ctx.query.get('q') || ''),
+  }));
+  // Reverse geocode a coordinate to a human-readable label.
+  router.get('/api/geo/reverse', async (ctx) => {
+    const lat = ctx.query.get('lat');
+    const lng = ctx.query.get('lng');
+    if (lat === null || lng === null) throw badRequest('Informe lat e lng.', 'missing_coordinate');
+    return { place: await geoService.reverse(lat, lng) };
+  });
 
   // --- Rides (P002 / P005) ---
   router.post('/api/rides', (ctx) => {

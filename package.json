@@ -1,6 +1,6 @@
 {
   "name": "urbanoflashcar",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "UrbanoFlashCar — plataforma própria de corridas urbanas (MVP verificável).",
   "type": "module",
   "private": true,

@@ -32,6 +32,26 @@ export const config = {
   driverFreshnessMs: Number(process.env.DRIVER_FRESHNESS_MS) || 5 * 60 * 1000,
   nearbyRadiusKm: Number(process.env.NEARBY_RADIUS_KM) || 10,
 
+  // Real-location services, proxied through our own origin (see
+  // src/services/geo.js). Keeping them server-side means the browser only ever
+  // talks to this app: ad-blockers / tracking-protection can't block a
+  // same-origin request, there is no CORS, and the IP fallback uses the real
+  // client IP seen by the server. All keyless and OSM-based; swap the URLs for
+  // a self-hosted Photon/Nominatim + IP provider in production at scale.
+  geo: {
+    // Photon (OSM) for address autocomplete + reverse geocoding. No API key.
+    photonUrl: process.env.GEO_PHOTON_URL || 'https://photon.komoot.io',
+    // Keyless IP geolocation. "{ip}" is replaced with the client IP; a bare
+    // base (no placeholder) resolves the caller's own IP. ipwho.is is CORS/
+    // key-free and returns { latitude, longitude, city, region, country }.
+    ipUrl: process.env.GEO_IP_URL || 'https://ipwho.is/{ip}',
+    // Max time to wait on an upstream geo call before giving up (ms).
+    timeoutMs: Number(process.env.GEO_TIMEOUT_MS) || 6000,
+    // Set GEO_DISABLED=1 to turn the proxy off entirely (endpoints then return
+    // empty results and the UI falls back to manual presets/coordinates).
+    disabled: process.env.GEO_DISABLED === '1',
+  },
+
   // Deterministic fare model (cents of R$). Tunable, but fixed per request so
   // estimates are reproducible and testable (P009).
   fare: {

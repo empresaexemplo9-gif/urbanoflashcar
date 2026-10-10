@@ -27,14 +27,14 @@ analisado (rides). O modelo de dados, os contratos e as regras aqui são
 | **P003** Isolamento por conta | Proposta | Checagem de dono no serviço + escopo por id no repositório | `test/rides.test.js` → "isolation", "only the assigned driver" |
 | **P002** Dados e continuidade | Proposta | Persistência em SQLite; sobrevive a reinício | `test/rides.test.js` + verificação manual de restart (ver abaixo) |
 | **P005** Jornadas e navegação | Pistas estáticas; comportamento a validar | Jornada completa estimar→solicitar→acompanhar; UI web acessível | `test/rides.test.js` (ciclo completo) + UI em `public/` |
-| **P009** Medir qualidade | Requisito de produto | Suíte de 52 testes (sucesso, erro, permissão); `/api/health` | `npm test` |
+| **P009** Medir qualidade | Requisito de produto | Suíte de 64 testes (sucesso, erro, permissão); `/api/health` | `npm test` |
 | **Instalável (PWA)** | Pedido do responsável | App web instalável em celular (Android/iOS) e desktop (Win/Mac/Linux): manifest, service worker, ícones | `test/pwa.test.js` (4 casos) |
 | **Instalável (desktop)** | Pedido do responsável | App Electron que embute o servidor; instaladores AppImage + .deb gerados e verificados | Build + execução do binário empacotado |
 | **P010** Publicar com recuperação | Requisito de produto | Dockerfile, volume de dados, health check, shutdown gracioso | `Dockerfile`, `src/server.js` |
 | **P004** Pagamento (direto ao motorista) | Pedido do responsável | Pagamento **direto ao motorista por Pix ou cartão físico**: ao concluir abre pagamento pendente; o motorista confirma o recebimento com o método | `test/payments.test.js` (8 casos) |
 | **Home + rotas favoritas** | Pedido do responsável | Tela inicial com rotas favoritas (CRUD, isoladas por conta) + tela de escolher origem/destino | `test/favorites.test.js` (4 casos) |
 | **Motoristas próximos** | Pedido do responsável | Presença do motorista (online + localização) e busca de parceiros próximos por distância/ETA, com janela de frescor e raio | `test/drivers.test.js` (6 casos) |
-| **Localização real por padrão** | Pedido do responsável | Ao abrir "nova corrida", a origem é preenchida com a localização atual real (GPS do dispositivo; fallback por IP sem chave; presets/manual só se negar/offline). No desktop (Electron) a permissão de geolocation é habilitada no processo principal | Verificação em navegador (geolocalização mockada → origem preenchida com as coordenadas reais) |
+| **Localização real por padrão** | Pedido do responsável | Ao abrir "nova corrida", a origem é preenchida com a localização atual real (GPS do dispositivo; fallback por IP; presets/manual só se negar/offline). **Busca, reverse geocoding e IP agora passam por rotas same-origin `/api/geo/*`** — o servidor chama o Photon/IP, então ad-blocker/CORS não bloqueiam e o IP usado é o real visto pelo servidor (`X-Forwarded-For`). No desktop (Electron) a permissão de geolocation é habilitada no processo principal e as chamadas de geo saem do servidor embutido | `test/geo.test.js` (12 casos) + verificação em navegador (geolocalização mockada → origem preenchida) |
 | **Atualização automática** | Pedido do responsável | O app instalado acompanha a plataforma: `/sw.js` com versão embutida (cache `ufc-shell-<versão>`) + recarga automática no PWA; `electron-updater` via GitHub Releases no desktop | `test/version.test.js` (2 casos) |
 | **P007** Compatibilidade do app | Proposta; **não** no escopo | — (o alvo é web; app nativo seria outra trilha) | — |
 | **P008** Prototipar diferencial | Hipótese | — (requer comparação com alternativas reais e usuários) | — |
@@ -52,7 +52,7 @@ como hipóteses a validar — não foram marcados como concluídos.
 
 ## Verificações executadas nesta entrega
 
-1. `npm test` → **52/52** testes passam (unidade + integração + pagamento + PWA).
+1. `npm test` → **64/64** testes passam (unidade + integração + pagamento + PWA + localização).
 2. Servidor real iniciado: `GET /api/health` responde `{"status":"ok"}`.
 3. Estáticos servidos com `Content-Type` correto (`/`, `/app.js`).
 4. Jornada ponta a ponta via HTTP: estimar → passageiro solicita → motorista
@@ -71,12 +71,18 @@ como hipóteses a validar — não foram marcados como concluídos.
    Instaladores Linux gerados: `UrbanoFlashCar-0.1.0.AppImage` e
    `urbanoflashcar_0.1.0_amd64.deb`. Windows (.exe/NSIS) e macOS (.dmg) ficam
    configurados para build na respectiva plataforma (ou CI), não exercitados aqui.
-10. Atualização automática: `GET /api/version` responde `{"version":"0.1.3"}`;
+10. Atualização automática: `GET /api/version` responde `{"version":"0.1.7"}`;
     `GET /sw.js` é servido com a versão injetada (`cache-control: no-store`,
-    sem o placeholder `__APP_VERSION__`, cache `ufc-shell-0.1.3`), garantindo
+    sem o placeholder `__APP_VERSION__`, cache `ufc-shell-0.1.7`), garantindo
     que o worker e o cache mudem a cada versão. O recarregamento automático do
     PWA roda no navegador do usuário (verificável no app real); o desktop usa
     `electron-updater` contra as GitHub Releases (exercido no build publicado).
+11. Localização (proxy same-origin): `test/geo.test.js` cobre o geocoder (com
+    `fetch` injetado), a extração do IP do cliente (`X-Forwarded-For`,
+    mapeamento IPv6) e as rotas `/api/geo/{ip,search,reverse}` (sucesso, 400 sem
+    coordenadas, e desligamento via `GEO_DISABLED`). Servidor real: com a saída
+    bloqueada, os endpoints degradam com elegância (`{place:null}`, `{places:[]}`
+    e rótulo de coordenada), mantendo a UI no modo manual em vez de quebrar.
 
 ## Checklist de publicação (P010)
 
@@ -94,5 +100,8 @@ como hipóteses a validar — não foram marcados como concluídos.
 - Pagamento online no app (hoje é direto ao motorista por Pix/cartão físico):
   avaliar provedor, split e antifraude quando fizer sentido.
 - Mapa/geocoder real: **integrado e gratuito** via Leaflet + OpenStreetMap +
-  Photon (sem API key). Funciona de imediato; cai para presets/manual se offline.
-  Para alto volume, auto-hospedar Photon/Nominatim e tiles.
+  Photon (sem API key), agora **proxied same-origin** (`/api/geo/*`) para não
+  ser bloqueado por ad-blocker/CORS e usar o IP real do cliente. Funciona de
+  imediato; cai para presets/manual se offline. GPS exato exige HTTPS (contexto
+  seguro). Para alto volume, auto-hospedar Photon/Nominatim e tiles e apontar
+  `GEO_PHOTON_URL`/`GEO_IP_URL` para eles.

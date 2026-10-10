@@ -168,17 +168,16 @@ function setupPresets() {
 }
 
 // --- Mapa gratuito e sem chave: Leaflet + OpenStreetMap + Photon ----------
-// Não exige API key nem cadastro: tiles do OpenStreetMap e geocodificação pelo
-// Photon (projeto OSM). Se o Leaflet/rede não carregar, cai no modo manual.
-const PHOTON = 'https://photon.komoot.io';
-// Keyless IP geolocation fallback (CORS-enabled). Used only when the device
-// geolocation is unavailable or denied — notably in the Electron desktop,
-// whose bundled Chromium ships no geolocation key.
-const IP_GEO = 'https://ipwho.is/';
+// A busca de endereços, o reverse geocoding e o fallback por IP passam pelo
+// nosso próprio servidor (/api/geo/*), não por hosts de terceiros. Assim o
+// navegador só fala com este app: ad-blockers/tracking-protection não têm como
+// bloquear (é same-origin), não há CORS e o fallback por IP usa o IP real que
+// o servidor enxerga. Se a rede/Leaflet não carregar, cai no modo manual.
 const maps = { ready: false, map: null, markers: {} };
 
-// Resolve the user's real current position: device GPS first, then IP-based
-// fallback. Returns { lat, lng, approx } or null. Never throws.
+// Resolve the user's real current position: device GPS first (the true, exact
+// location — needs a secure context: HTTPS or localhost), then the server-side
+// IP fallback. Returns { lat, lng, label, approx } or null. Never throws.
 function devicePosition(timeoutMs = 8000) {
   return new Promise((resolve) => {
     if (!navigator.geolocation) return resolve(null);
@@ -190,23 +189,20 @@ function devicePosition(timeoutMs = 8000) {
   });
 }
 function ipPosition() {
-  return fetch(IP_GEO, { cache: 'no-store' })
+  return fetch('/api/geo/ip', { cache: 'no-store' })
     .then((r) => r.json())
-    .then((d) => {
-      const lat = Number(d && d.latitude);
-      const lng = Number(d && d.longitude);
-      if (Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)) {
-        return { lat, lng, approx: true };
-      }
-      return null;
-    })
+    .then((d) => (d && d.place ? d.place : null)) // { lat, lng, label, approx:true }
     .catch(() => null);
 }
 async function resolveCurrentPlace() {
-  const pos = (await devicePosition()) || (await ipPosition());
-  if (!pos) return null;
-  const base = await reverseGeocode(pos.lat, pos.lng);
-  return { label: pos.approx ? `${base} (aprox.)` : base, lat: pos.lat, lng: pos.lng };
+  const gps = await devicePosition();
+  if (gps) {
+    const base = await reverseGeocode(gps.lat, gps.lng);
+    return { label: base, lat: gps.lat, lng: gps.lng };
+  }
+  const ip = await ipPosition();
+  if (ip) return { label: `${ip.label} (aprox.)`, lat: ip.lat, lng: ip.lng };
+  return null;
 }
 // Fill the pickup with the real current location. `silent` suppresses the
 // error toast (used for the automatic fill on opening a new ride). With
@@ -310,29 +306,22 @@ function renderSuggestions(list, items, onPick) {
   list.hidden = false;
 }
 
+// Autocomplete via our same-origin proxy (server talks to Photon/OSM).
 async function photonSearch(q) {
   try {
-    const res = await fetch(`${PHOTON}/api?q=${encodeURIComponent(q)}&limit=5&lang=pt`);
+    const res = await fetch(`/api/geo/search?q=${encodeURIComponent(q)}`);
     const data = await res.json();
-    return (data.features || []).map(featureToPlace).filter(Boolean);
+    return Array.isArray(data.places) ? data.places : [];
   } catch { return []; }
 }
 
+// Reverse geocode via our same-origin proxy. Always returns a label string.
 function reverseGeocode(lat, lng) {
-  return fetch(`${PHOTON}/reverse?lat=${lat}&lon=${lng}&lang=pt`)
+  const fallback = `${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`;
+  return fetch(`/api/geo/reverse?lat=${lat}&lng=${lng}`)
     .then((r) => r.json())
-    .then((d) => (d.features && d.features[0] ? featureToPlace(d.features[0]).label : `${lat.toFixed(5)}, ${lng.toFixed(5)}`))
-    .catch(() => `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-}
-
-function featureToPlace(f) {
-  if (!f || !f.geometry) return null;
-  const [lng, lat] = f.geometry.coordinates;
-  const p = f.properties || {};
-  const street = p.street ? p.street + (p.housenumber ? ', ' + p.housenumber : '') : null;
-  const parts = [p.name, street, p.city || p.town || p.village || p.county, p.state].filter(Boolean);
-  const label = [...new Set(parts)].join(' · ') || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-  return { label, lat, lng };
+    .then((d) => (d && d.place && d.place.label ? d.place.label : fallback))
+    .catch(() => fallback);
 }
 
 function markerIcon(letter) {

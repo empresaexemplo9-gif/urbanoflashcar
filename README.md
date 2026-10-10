@@ -51,8 +51,9 @@ npm run dev         # com --watch
 ```
 
 Variáveis de ambiente úteis: `PORT`, `HOST`, `DATABASE_FILE`, `SESSION_TTL_MS`,
-e o modelo de tarifa (`FARE_BASE_CENTS`, `FARE_PER_KM_CENTS`,
-`FARE_PER_MIN_CENTS`, `FARE_MINIMUM_CENTS`, `FARE_AVG_SPEED_KMH`).
+o modelo de tarifa (`FARE_BASE_CENTS`, `FARE_PER_KM_CENTS`,
+`FARE_PER_MIN_CENTS`, `FARE_MINIMUM_CENTS`, `FARE_AVG_SPEED_KMH`) e a
+localização (`GEO_PHOTON_URL`, `GEO_IP_URL`, `GEO_TIMEOUT_MS`, `GEO_DISABLED`).
 
 ## Localização real (gratuita, sem chave)
 
@@ -68,19 +69,37 @@ sem API key**:
   [OpenStreetMap](https://www.openstreetmap.org/).
 - **Busca/geocodificação de endereços:** [Photon](https://photon.komoot.io/)
   (projeto baseado em OSM).
+- **Localização aproximada por IP:** [ipwho.is](https://ipwho.is/) (sem chave).
+
+**O navegador só fala com o próprio app.** A busca de endereços, o reverse
+geocoding e o fallback por IP passam por rotas **same-origin** (`/api/geo/*`) —
+é o servidor que chama o Photon/IP, não o navegador. Isso resolve o caso comum
+de "a localização não funciona": requisições a terceiros feitas pelo navegador
+costumam ser bloqueadas por **ad-blockers / proteção contra rastreamento** ou
+barradas por **CORS**; uma rota do próprio app não é. Além disso, o fallback
+por IP usa o **IP real** que o servidor enxerga (respeitando `X-Forwarded-For`
+atrás de um proxy reverso), em vez de depender de o navegador alcançar um
+serviço externo.
+
+> **GPS preciso exige contexto seguro.** O `navigator.geolocation` do navegador
+> (a localização exata) só funciona em **HTTPS** ou em `localhost`. Servido por
+> HTTP puro num IP/host da rede, o navegador bloqueia o GPS e o app usa o
+> fallback por IP. Publique com HTTPS para ter a localização exata.
 
 Não é preciso cadastro, cartão nem chave — funciona de imediato (inclusive no
-app de desktop), bastando acesso à internet. Se os serviços/Leaflet não
-carregarem (offline), o app cai no modo de **presets/coordenadas manuais**.
+app de desktop, cujo servidor embutido faz as chamadas de geo). Se os serviços/
+Leaflet não carregarem (offline) ou com `GEO_DISABLED=1`, o app cai no modo de
+**presets/coordenadas manuais**.
 
 > **Uso em escala:** OSM/Photon são serviços públicos de uso justo. Para alto
 > volume em produção, considere **auto-hospedar** o Photon/Nominatim e um
-> servidor de tiles (ou um provedor), respeitando as políticas de uso do OSM.
+> servidor de tiles (ou um provedor) e apontar `GEO_PHOTON_URL`/`GEO_IP_URL`
+> para eles, respeitando as políticas de uso do OSM.
 
 ## Testar
 
 ```bash
-npm test            # 52 testes: unidade (tarifa/geo) + integração (API/dados/permissões/pagamento) + PWA + versão
+npm test            # 64 testes: unidade (tarifa/geo/geocoder) + integração (API/dados/permissões/pagamento/localização) + PWA + versão
 ```
 
 ## API
@@ -94,6 +113,9 @@ npm test            # 52 testes: unidade (tarifa/geo) + integração (API/dados/
 | POST | `/api/auth/logout` | Encerrar sessão |
 | GET  | `/api/me` | Usuário atual |
 | POST | `/api/estimate` | Estimar tarifa (sem criar corrida) |
+| GET  | `/api/geo/ip` | Localização aproximada pelo IP do cliente (fallback do GPS) |
+| GET  | `/api/geo/search?q=` | Autocomplete de endereços (proxy do Photon/OSM) |
+| GET  | `/api/geo/reverse?lat=&lng=` | Reverse geocoding de uma coordenada |
 | POST | `/api/rides` | Solicitar corrida (passageiro) |
 | GET  | `/api/rides` | Minhas corridas |
 | GET  | `/api/rides/available` | Corridas abertas (motorista) |
