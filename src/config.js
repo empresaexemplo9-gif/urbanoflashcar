@@ -32,6 +32,29 @@ export const config = {
   driverFreshnessMs: Number(process.env.DRIVER_FRESHNESS_MS) || 5 * 60 * 1000,
   nearbyRadiusKm: Number(process.env.NEARBY_RADIUS_KM) || 10,
 
+  // Real-location services, proxied through our own origin (see
+  // src/services/geo.js). Keeping them server-side means the browser only ever
+  // talks to this app: ad-blockers / tracking-protection can't block a
+  // same-origin request, there is no CORS, and the IP fallback uses the real
+  // client IP seen by the server. All keyless and OSM-based; swap the URLs for
+  // a self-hosted Photon/Nominatim + IP provider in production at scale.
+  geo: {
+    // Photon (OSM) for address autocomplete + reverse geocoding. No API key.
+    photonUrl: process.env.GEO_PHOTON_URL || 'https://photon.komoot.io',
+    // ViaCEP (keyless) resolves a Brazilian CEP to its street address, which we
+    // then geocode. "{cep}" is replaced with the 8-digit CEP.
+    viaCepUrl: process.env.GEO_VIACEP_URL || 'https://viacep.com.br/ws/{cep}/json/',
+    // Keyless IP geolocation. "{ip}" is replaced with the client IP; a bare
+    // base (no placeholder) resolves the caller's own IP. ipwho.is is CORS/
+    // key-free and returns { latitude, longitude, city, region, country }.
+    ipUrl: process.env.GEO_IP_URL || 'https://ipwho.is/{ip}',
+    // Max time to wait on an upstream geo call before giving up (ms).
+    timeoutMs: Number(process.env.GEO_TIMEOUT_MS) || 6000,
+    // Set GEO_DISABLED=1 to turn the proxy off entirely (endpoints then return
+    // empty results and the UI falls back to manual presets/coordinates).
+    disabled: process.env.GEO_DISABLED === '1',
+  },
+
   // Deterministic fare model (cents of R$). Tunable, but fixed per request so
   // estimates are reproducible and testable (P009).
   fare: {
@@ -41,4 +64,16 @@ export const config = {
     minimumCents: Number(process.env.FARE_MINIMUM_CENTS) || 600,
     avgSpeedKmh: Number(process.env.FARE_AVG_SPEED_KMH) || 30,
   },
+
+  // Ride categories/tiers ("choose your ride"), each a multiplier over the base
+  // fare — the universal Uber/99 pricing tool. 'economy' MUST stay 1.0 so the
+  // default price is unchanged. Order defines how options are listed.
+  categories: [
+    { id: 'economy', label: 'Econômico', multiplier: 1.0, seats: 4, description: 'O mais barato' },
+    { id: 'comfort', label: 'Conforto', multiplier: 1.3, seats: 4, description: 'Carros novos, mais espaço' },
+    { id: 'xl', label: 'XL (grande)', multiplier: 1.7, seats: 6, description: 'Até 6 pessoas' },
+  ],
+
+  // Tip (gorjeta) bounds in cents: a tip must be ≥ 0 and ≤ this cap.
+  maxTipCents: Number(process.env.MAX_TIP_CENTS) || 10000,
 };

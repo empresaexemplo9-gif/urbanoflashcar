@@ -25,7 +25,22 @@ const PRESETS = [
   { label: 'USP Butantã', lat: -23.5595, lng: -46.7313 },
 ];
 
-const state = { token: store.get(), user: null };
+const state = { token: store.get(), user: null, categories: [], selectedCategory: 'economy' };
+
+// --- Modal (reused for chat + receipt) ----------------------------------
+const modal = { pollTimer: null };
+function openModal(title, buildBody) {
+  $('#modal-title').textContent = title;
+  const body = $('#modal-body');
+  body.innerHTML = '';
+  buildBody(body);
+  $('#modal').hidden = false;
+}
+function closeModal() {
+  $('#modal').hidden = true;
+  if (modal.pollTimer) { clearInterval(modal.pollTimer); modal.pollTimer = null; }
+  $('#modal-body').innerHTML = '';
+}
 
 // --- API helper ---------------------------------------------------------
 async function api(path, { method = 'GET', body } = {}) {
@@ -79,6 +94,8 @@ function render() {
       showRiderScreen('home');
       loadRiderRides();
       loadFavorites();
+      loadCategories();
+      startLiveLocation(); // current location is always active for riders
     } else { loadAvailable(); loadDriverRides(); }
   }
 }
@@ -140,6 +157,7 @@ $('#logout-btn').addEventListener('click', async () => {
     try { await api('/driver/offline', { method: 'POST' }); } catch { /* ignore */ }
   }
   stopPresence();
+  stopLiveLocation();
   try { await api('/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
   state.token = null; state.user = null;
   store.clear();
@@ -168,17 +186,20 @@ function setupPresets() {
 }
 
 // --- Mapa gratuito e sem chave: Leaflet + OpenStreetMap + Photon ----------
-// Não exige API key nem cadastro: tiles do OpenStreetMap e geocodificação pelo
-// Photon (projeto OSM). Se o Leaflet/rede não carregar, cai no modo manual.
-const PHOTON = 'https://photon.komoot.io';
-// Keyless IP geolocation fallback (CORS-enabled). Used only when the device
-// geolocation is unavailable or denied — notably in the Electron desktop,
-// whose bundled Chromium ships no geolocation key.
-const IP_GEO = 'https://ipwho.is/';
+// A busca de endereços, o reverse geocoding e o fallback por IP passam pelo
+// nosso próprio servidor (/api/geo/*), não por hosts de terceiros. Assim o
+// navegador só fala com este app: ad-blockers/tracking-protection não têm como
+// bloquear (é same-origin), não há CORS e o fallback por IP usa o IP real que
+// o servidor enxerga. Se a rede/Leaflet não carregar, cai no modo manual.
 const maps = { ready: false, map: null, markers: {} };
 
-// Resolve the user's real current position: device GPS first, then IP-based
-// fallback. Returns { lat, lng, approx } or null. Never throws.
+// Live current location, kept always active while the rider uses the app (see
+// startLiveLocation). `coords` biases address search toward the rider's city.
+const geo = { coords: null, watchId: null, started: false };
+
+// Resolve the user's real current position: device GPS first (the true, exact
+// location — needs a secure context: HTTPS or localhost), then the server-side
+// IP fallback. Returns { lat, lng, label, approx } or null. Never throws.
 function devicePosition(timeoutMs = 8000) {
   return new Promise((resolve) => {
     if (!navigator.geolocation) return resolve(null);
@@ -190,23 +211,20 @@ function devicePosition(timeoutMs = 8000) {
   });
 }
 function ipPosition() {
-  return fetch(IP_GEO, { cache: 'no-store' })
+  return fetch('/api/geo/ip', { cache: 'no-store' })
     .then((r) => r.json())
-    .then((d) => {
-      const lat = Number(d && d.latitude);
-      const lng = Number(d && d.longitude);
-      if (Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)) {
-        return { lat, lng, approx: true };
-      }
-      return null;
-    })
+    .then((d) => (d && d.place ? d.place : null)) // { lat, lng, label, approx:true }
     .catch(() => null);
 }
 async function resolveCurrentPlace() {
-  const pos = (await devicePosition()) || (await ipPosition());
-  if (!pos) return null;
-  const base = await reverseGeocode(pos.lat, pos.lng);
-  return { label: pos.approx ? `${base} (aprox.)` : base, lat: pos.lat, lng: pos.lng };
+  const gps = await devicePosition();
+  if (gps) {
+    const base = await reverseGeocode(gps.lat, gps.lng);
+    return { label: base, lat: gps.lat, lng: gps.lng };
+  }
+  const ip = await ipPosition();
+  if (ip) return { label: `${ip.label} (aprox.)`, lat: ip.lat, lng: ip.lng };
+  return null;
 }
 // Fill the pickup with the real current location. `silent` suppresses the
 // error toast (used for the automatic fill on opening a new ride). With
@@ -224,6 +242,63 @@ async function useCurrentLocation({ silent = false, onlyIfEmpty = false } = {}) 
   setSearchValue('pickup', place.label);
   mapsSetPlace('pickup', place);
   return true;
+}
+
+// Paint the small "location active" status line in the new-ride screen.
+function setGeoStatus(text, kind = '') {
+  const el = $('#geo-status');
+  if (!el) return;
+  el.textContent = text;
+  el.className = `geo-status ${kind}`;
+}
+
+// Keep the current location ALWAYS active while the rider is on the platform.
+// Device GPS is watched continuously (secure context required); if it is
+// denied/unavailable we fall back once to the server-side IP position. The
+// freshest coordinate is kept in `geo.coords` and used to bias address search
+// and to default the pickup. Idempotent: safe to call on every render.
+function startLiveLocation() {
+  if (geo.started) return;
+  geo.started = true;
+  setGeoStatus('📍 Obtendo sua localização atual…');
+
+  const apply = (coords, approx) => {
+    geo.coords = coords;
+    reverseGeocode(coords.lat, coords.lng).then((label) => {
+      setGeoStatus(`📍 Localização ativa${approx ? ' (aproximada)' : ''}: ${label}`, approx ? 'approx' : 'live');
+    });
+    // Default the pickup to the live location while the rider hasn't chosen one.
+    if (pickupIsEmpty()) {
+      reverseGeocode(coords.lat, coords.lng).then((label) => {
+        if (!pickupIsEmpty()) return;
+        setSearchValue('pickup', approx ? `${label} (aprox.)` : label);
+        mapsSetPlace('pickup', { label, lat: coords.lat, lng: coords.lng });
+      });
+    }
+  };
+
+  const useIpOnce = () =>
+    ipPosition().then((ip) => {
+      if (ip) apply({ lat: ip.lat, lng: ip.lng }, true);
+      else setGeoStatus('📍 Localização indisponível — informe origem e destino.', 'err');
+    });
+
+  if (navigator.geolocation) {
+    geo.watchId = navigator.geolocation.watchPosition(
+      (pos) => apply({ lat: pos.coords.latitude, lng: pos.coords.longitude }, false),
+      () => { if (!geo.coords) useIpOnce(); }, // denied/timeout → IP fallback once
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 },
+    );
+  } else {
+    useIpOnce();
+  }
+}
+
+function stopLiveLocation() {
+  if (geo.watchId != null && navigator.geolocation) navigator.geolocation.clearWatch(geo.watchId);
+  geo.watchId = null;
+  geo.coords = null;
+  geo.started = false;
 }
 
 function setupMaps() {
@@ -310,29 +385,25 @@ function renderSuggestions(list, items, onPick) {
   list.hidden = false;
 }
 
+// Autocomplete via our same-origin proxy (server talks to Photon/ViaCEP).
+// Accepts "rua + setor/bairro" or a CEP; biases results to the live location.
 async function photonSearch(q) {
   try {
-    const res = await fetch(`${PHOTON}/api?q=${encodeURIComponent(q)}&limit=5&lang=pt`);
+    let url = `/api/geo/search?q=${encodeURIComponent(q)}`;
+    if (geo.coords) url += `&lat=${geo.coords.lat}&lng=${geo.coords.lng}`;
+    const res = await fetch(url);
     const data = await res.json();
-    return (data.features || []).map(featureToPlace).filter(Boolean);
+    return Array.isArray(data.places) ? data.places : [];
   } catch { return []; }
 }
 
+// Reverse geocode via our same-origin proxy. Always returns a label string.
 function reverseGeocode(lat, lng) {
-  return fetch(`${PHOTON}/reverse?lat=${lat}&lon=${lng}&lang=pt`)
+  const fallback = `${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`;
+  return fetch(`/api/geo/reverse?lat=${lat}&lng=${lng}`)
     .then((r) => r.json())
-    .then((d) => (d.features && d.features[0] ? featureToPlace(d.features[0]).label : `${lat.toFixed(5)}, ${lng.toFixed(5)}`))
-    .catch(() => `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-}
-
-function featureToPlace(f) {
-  if (!f || !f.geometry) return null;
-  const [lng, lat] = f.geometry.coordinates;
-  const p = f.properties || {};
-  const street = p.street ? p.street + (p.housenumber ? ', ' + p.housenumber : '') : null;
-  const parts = [p.name, street, p.city || p.town || p.village || p.county, p.state].filter(Boolean);
-  const label = [...new Set(parts)].join(' · ') || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-  return { label, lat, lng };
+    .then((d) => (d && d.place && d.place.label ? d.place.label : fallback))
+    .catch(() => fallback);
 }
 
 function markerIcon(letter) {
@@ -404,24 +475,91 @@ function readPlaces() {
   };
 }
 
-$('#estimate-btn').addEventListener('click', async () => {
+// --- Ride categories (tiers) + coupon + schedule ------------------------
+const promoValue = () => $('#promo-input').value.trim();
+const scheduleValue = () => {
+  const v = $('#schedule-input').value;
+  return v ? new Date(v).toISOString() : null; // datetime-local → ISO (local tz)
+};
+
+// Body for /estimate and /rides: places + chosen category/coupon/schedule.
+function rideBody() {
+  const body = { ...readPlaces(), category: state.selectedCategory };
+  const promo = promoValue();
+  if (promo) body.promoCode = promo;
+  const sched = scheduleValue();
+  if (sched) body.scheduledFor = sched;
+  return body;
+}
+
+async function loadCategories() {
   try {
-    const est = await api('/estimate', { method: 'POST', body: readPlaces() });
+    const { categories } = await api('/categories');
+    state.categories = categories;
+    if (!categories.some((c) => c.id === state.selectedCategory)) {
+      state.selectedCategory = categories[0]?.id || 'economy';
+    }
+    renderCategories();
+  } catch { /* categories are optional sugar; ignore if offline */ }
+}
+
+// Render the tier cards; `prices` maps category id → fareCents (from an estimate).
+function renderCategories(prices = null) {
+  const list = $('#category-list');
+  if (!list) return;
+  list.innerHTML = '';
+  for (const c of state.categories) {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = `category-card${c.id === state.selectedCategory ? ' is-selected' : ''}`;
+    card.setAttribute('role', 'radio');
+    card.setAttribute('aria-checked', String(c.id === state.selectedCategory));
+    const price = prices && prices[c.id] != null ? money(prices[c.id]) : `${c.seats} lug.`;
+    card.innerHTML = `<span><span class="cat-name">${escapeHtml(c.label)}</span><br>
+      <span class="cat-desc">${escapeHtml(c.description || '')}</span></span>
+      <span class="cat-price">${price}</span>`;
+    card.addEventListener('click', () => { state.selectedCategory = c.id; renderCategories(prices); doEstimate(true); });
+    list.appendChild(card);
+  }
+}
+
+// Shared estimate: fills the estimate box and prices every category card.
+// `silent` suppresses the error toast (used on category click before places set).
+async function doEstimate(silent = false) {
+  const places = readPlaces();
+  if (Number.isNaN(places.pickup.lat) || Number.isNaN(places.dropoff.lat)) {
+    if (!silent) toast('Defina origem e destino para estimar.', 'err');
+    return;
+  }
+  try {
+    const est = await api('/estimate', { method: 'POST', body: rideBody() });
+    const prices = {};
+    for (const o of est.options || []) prices[o.id] = o.fareCents;
+    renderCategories(prices);
     const box = $('#estimate-box');
     box.hidden = false;
+    const discount = est.discountCents
+      ? `<div class="rated-line">Cupom ${escapeHtml(est.promoCode)}: −${money(est.discountCents)}</div>`
+      : '';
     box.innerHTML = `<div class="fare">${money(est.fareCents)}</div>
-      <div>${est.distanceKm} km · ~${Math.round(est.durationMin)} min</div>`;
-  } catch (err) { toast(err.message, 'err'); }
-});
+      <div>${est.distanceKm} km · ~${Math.round(est.durationMin)} min · ${escapeHtml(labelForCategory(est.category))}</div>
+      ${discount}`;
+  } catch (err) { if (!silent) toast(err.message, 'err'); }
+}
+const labelForCategory = (id) => (state.categories.find((c) => c.id === id) || {}).label || id;
+
+$('#estimate-btn').addEventListener('click', () => doEstimate());
 
 $('#ride-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   try {
-    await api('/rides', { method: 'POST', body: readPlaces() });
-    toast('Corrida solicitada!', 'ok');
+    const { ride } = await api('/rides', { method: 'POST', body: rideBody() });
+    toast(ride.scheduledFor ? 'Corrida agendada!' : 'Corrida solicitada!', 'ok');
     $('#estimate-box').hidden = true;
     $('#nearby-box').hidden = true;
     e.target.reset();
+    state.selectedCategory = state.categories[0]?.id || 'economy';
+    renderCategories();
     clearMaps();
     showRiderScreen('home');
     loadRiderRides();
@@ -526,9 +664,12 @@ $('#find-drivers-btn').addEventListener('click', async () => {
       return;
     }
     box.innerHTML = '<div class="meta">Motoristas parceiros próximos:</div>' +
-      drivers.map((d) =>
-        `<div class="nearby-item"><span>🚗 ${escapeHtml(d.name)}</span>` +
-        `<span>${d.distanceKm} km · ~${Math.round(d.etaMin)} min</span></div>`).join('');
+      drivers.map((d) => {
+        const rating = d.rating && d.rating.avg != null
+          ? ` <span class="rating-chip">★ ${d.rating.avg}</span>` : '';
+        return `<div class="nearby-item"><span>🚗 ${escapeHtml(d.name)}${rating}</span>` +
+          `<span>${d.distanceKm} km · ~${Math.round(d.etaMin)} min</span></div>`;
+      }).join('');
   } catch (err) { box.hidden = true; toast(err.message, 'err'); }
 });
 
@@ -543,11 +684,19 @@ function rideCard(ride, actions) {
           : ''
       }</div>`
     : '';
+  const cat = labelForCategory(ride.category || 'economy');
+  const scheduled = ride.scheduledFor
+    ? `<div class="meta">🗓️ Agendada para ${new Date(ride.scheduledFor).toLocaleString('pt-BR')}</div>` : '';
+  const tipLine = ride.tipCents ? ` · gorjeta ${money(ride.tipCents)}` : '';
+  const cancelLine = ride.status === 'cancelled' && ride.cancelReason
+    ? `<div class="meta">Motivo: ${escapeHtml(ride.cancelReason)}</div>` : '';
   li.innerHTML = `
     <div class="route">${escapeHtml(ride.pickup.label)} → ${escapeHtml(ride.dropoff.label)}</div>
-    <div class="meta">${money(ride.fareCents)} · ${ride.distanceKm} km · ~${Math.round(ride.durationMin)} min</div>
+    <div class="meta">${money(ride.fareCents)}${tipLine} · ${ride.distanceKm} km · ~${Math.round(ride.durationMin)} min · ${escapeHtml(cat)}</div>
+    ${scheduled}
     <div><span class="badge ${ride.status}">${STATUS_PT[ride.status] || ride.status}</span></div>
     ${paymentLine}
+    ${cancelLine}
     <div class="ride-actions"></div>`;
   const bar = li.querySelector('.ride-actions');
   for (const a of actions) {
@@ -600,13 +749,131 @@ function paymentActions(ride) {
     : [];
 }
 
+// --- In-ride chat -------------------------------------------------------
+async function openChat(rideId) {
+  openModal('Chat da corrida', (body) => {
+    const thread = document.createElement('div');
+    thread.className = 'chat-thread';
+    const form = document.createElement('form');
+    form.className = 'chat-form';
+    form.innerHTML = '<input type="text" placeholder="Escreva uma mensagem" autocomplete="off" maxlength="1000" /><button type="submit" class="btn btn-primary btn-sm">Enviar</button>';
+    body.append(thread, form);
+
+    const paint = (messages) => {
+      thread.innerHTML = '';
+      for (const m of messages) {
+        const el = document.createElement('div');
+        el.className = `chat-msg ${m.senderId === state.user.id ? 'mine' : 'theirs'}`;
+        el.textContent = m.body;
+        thread.appendChild(el);
+      }
+      thread.scrollTop = thread.scrollHeight;
+    };
+    const refresh = async () => {
+      try { const { messages } = await api(`/rides/${rideId}/messages`); paint(messages); }
+      catch { /* ignore transient errors while open */ }
+    };
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = form.querySelector('input');
+      const text = input.value.trim();
+      if (!text) return;
+      try { await api(`/rides/${rideId}/messages`, { method: 'POST', body: { body: text } }); input.value = ''; refresh(); }
+      catch (err) { toast(err.message, 'err'); }
+    });
+    refresh();
+    modal.pollTimer = setInterval(refresh, 4000); // live-ish updates while open
+  });
+}
+
+// --- Receipt + tip (rider) ----------------------------------------------
+async function openReceipt(rideId, canTip) {
+  try {
+    const { receipt } = await api(`/rides/${rideId}/receipt`);
+    openModal('Recibo', (body) => {
+      const line = (label, cents, cls = '') =>
+        `<div class="receipt-line ${cls}"><span>${label}</span><span>${money(cents)}</span></div>`;
+      let html = line(`Tarifa (${escapeHtml(labelForCategory(receipt.category))})`, receipt.baseFareCents);
+      if (receipt.discountCents) html += line(`Cupom ${escapeHtml(receipt.promoCode || '')}`, -receipt.discountCents);
+      if (receipt.tipCents) html += line('Gorjeta', receipt.tipCents);
+      html += line('Total', receipt.totalCents, 'total');
+      html += `<div class="rated-line" style="margin-top:8px">${receipt.distanceKm} km · ~${Math.round(receipt.durationMin)} min</div>`;
+      body.innerHTML = html;
+
+      if (canTip) {
+        const row = document.createElement('div');
+        row.className = 'tip-row';
+        row.innerHTML = '<span class="rated-line">Gorjeta:</span>';
+        for (const cents of [200, 500, 1000]) {
+          const b = document.createElement('button');
+          b.type = 'button'; b.className = 'btn btn-ghost btn-sm'; b.textContent = `+ ${money(cents)}`;
+          b.addEventListener('click', async () => {
+            try {
+              await api(`/rides/${rideId}/tip`, { method: 'POST', body: { tipCents: (receipt.tipCents || 0) + cents } });
+              toast('Gorjeta registrada. Obrigado!', 'ok');
+              closeModal(); loadRiderRides();
+            } catch (err) { toast(err.message, 'err'); }
+          });
+          row.appendChild(b);
+        }
+        body.appendChild(row);
+      }
+    });
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+// --- Rating -------------------------------------------------------------
+async function openRating(rideId) {
+  let existing = null;
+  try { const res = await api(`/rides/${rideId}/rating`); existing = res.rating; } catch { /* ignore */ }
+  openModal('Avaliar', (body) => {
+    if (existing) {
+      body.innerHTML = `<div class="rated-line">Você já avaliou: ${'★'.repeat(existing.stars)}${'☆'.repeat(5 - existing.stars)}</div>`
+        + (existing.comment ? `<div class="rated-line">“${escapeHtml(existing.comment)}”</div>` : '');
+      return;
+    }
+    let chosen = 0;
+    const stars = document.createElement('div');
+    stars.className = 'stars';
+    const paint = () => stars.querySelectorAll('.star-btn').forEach((b, i) => b.classList.toggle('on', i < chosen));
+    for (let i = 1; i <= 5; i += 1) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'star-btn'; b.textContent = '★'; b.setAttribute('aria-label', `${i} estrela(s)`);
+      b.addEventListener('click', () => { chosen = i; paint(); });
+      stars.appendChild(b);
+    }
+    const comment = document.createElement('input');
+    comment.type = 'text'; comment.placeholder = 'Comentário (opcional)'; comment.maxLength = 500; comment.style.marginTop = '10px'; comment.style.width = '100%';
+    const send = document.createElement('button');
+    send.type = 'button'; send.className = 'btn btn-primary'; send.textContent = 'Enviar avaliação'; send.style.marginTop = '10px';
+    send.addEventListener('click', async () => {
+      if (chosen < 1) return toast('Escolha de 1 a 5 estrelas.', 'err');
+      try {
+        await api(`/rides/${rideId}/rate`, { method: 'POST', body: { stars: chosen, comment: comment.value.trim() || undefined } });
+        toast('Avaliação enviada. Obrigado!', 'ok');
+        closeModal(); render();
+      } catch (err) { toast(err.message, 'err'); }
+    });
+    body.append(stars, comment, send);
+  });
+}
+
 async function loadRiderRides() {
   try {
     const { rides } = await api('/rides');
-    fill('#rides-list', rides, (r) =>
-      ['requested', 'accepted'].includes(r.status)
-        ? [{ label: 'Cancelar', run: () => transition(r.id, 'cancel') }]
-        : []);
+    fill('#rides-list', rides, (r) => {
+      if (['requested', 'accepted'].includes(r.status)) {
+        const acts = [{ label: 'Cancelar', run: () => transition(r.id, 'cancel') }];
+        if (r.status === 'accepted') acts.push({ label: '💬 Chat', run: () => openChat(r.id) });
+        return acts;
+      }
+      if (r.status === 'in_progress') return [{ label: '💬 Chat', run: () => openChat(r.id) }];
+      if (r.status === 'completed') return [
+        { label: '🧾 Recibo / gorjeta', run: () => openReceipt(r.id, true) },
+        { label: '★ Avaliar', run: () => openRating(r.id) },
+      ];
+      return [];
+    });
   } catch (err) { toast(err.message, 'err'); }
 }
 
@@ -623,9 +890,14 @@ async function loadDriverRides() {
     fill('#driver-rides-list', rides, (r) => {
       if (r.status === 'accepted') return [
         { label: 'Iniciar', run: () => transition(r.id, 'start') },
+        { label: '💬 Chat', run: () => openChat(r.id) },
         { label: 'Cancelar', run: () => transition(r.id, 'cancel') },
       ];
-      if (r.status === 'in_progress') return [{ label: 'Concluir', run: () => transition(r.id, 'complete') }];
+      if (r.status === 'in_progress') return [
+        { label: 'Concluir', run: () => transition(r.id, 'complete') },
+        { label: '💬 Chat', run: () => openChat(r.id) },
+      ];
+      if (r.status === 'completed') return [...paymentActions(r), { label: '★ Avaliar', run: () => openRating(r.id) }];
       return paymentActions(r);
     });
   } catch (err) { toast(err.message, 'err'); }
@@ -818,11 +1090,18 @@ function safe(fn) {
   try { fn(); } catch (err) { console.error('[boot]', err); }
 }
 
+function setupModal() {
+  $('#modal-close').addEventListener('click', closeModal);
+  $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#modal').hidden) closeModal(); });
+}
+
 async function boot() {
   safe(setupPwa);
   safe(setupAuthTabs);
   safe(setupPresets);
   safe(setupMaps);
+  safe(setupModal);
   if (state.token) {
     try {
       const { user } = await api('/me');

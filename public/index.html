@@ -134,17 +134,20 @@
             <button id="back-home-btn" type="button" class="btn btn-ghost btn-sm">← Voltar</button>
           </div>
           <form id="ride-form" class="form maps-off" novalidate>
+            <!-- Localização atual sempre ativa -->
+            <div id="geo-status" class="geo-status" aria-live="polite"></div>
+
             <!-- Mapa real gratuito (Leaflet + OpenStreetMap) -->
             <div id="map" class="map" aria-label="Mapa" role="application"></div>
 
-            <!-- Busca de endereços reais (Photon / OpenStreetMap) -->
+            <!-- Busca por rua + setor/bairro, ou por CEP (Photon / ViaCEP) -->
             <div class="maps-inputs">
               <label>Origem
-                <input type="text" id="pickup-search" class="addr" placeholder="Buscar endereço de origem" autocomplete="off" />
+                <input type="text" id="pickup-search" class="addr" placeholder="Rua e setor/bairro (ex.: Rua 3, Setor Oeste) ou CEP" autocomplete="off" />
               </label>
               <button type="button" id="geoloc-btn" class="btn btn-ghost btn-sm">📍 Usar minha localização</button>
               <label>Destino
-                <input type="text" id="dropoff-search" class="addr" placeholder="Buscar endereço de destino" autocomplete="off" />
+                <input type="text" id="dropoff-search" class="addr" placeholder="Rua e setor/bairro ou CEP (ex.: 74110-010)" autocomplete="off" />
               </label>
             </div>
 
@@ -170,6 +173,19 @@
                   <input type="number" step="any" name="dropoff-lat" placeholder="lat" />
                   <input type="number" step="any" name="dropoff-lng" placeholder="lng" />
                 </div>
+              </div>
+            </div>
+
+            <!-- Escolha de categoria, cupom e agendamento -->
+            <div class="ride-options">
+              <div id="category-list" class="category-list" role="radiogroup" aria-label="Categoria da corrida"></div>
+              <div class="opt-row">
+                <label>Cupom
+                  <input type="text" id="promo-input" class="addr" placeholder="Código (ex.: BEMVINDO10)" autocomplete="off" />
+                </label>
+                <label>Agendar (opcional)
+                  <input type="datetime-local" id="schedule-input" class="addr" />
+                </label>
               </div>
             </div>
 
@@ -219,6 +235,18 @@
     </footer>
 
     <div id="toast" class="toast" role="status" aria-live="assertive" hidden></div>
+
+    <!-- Reusable modal for the in-ride chat and the trip receipt -->
+    <div id="modal" class="modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-head">
+          <h2 id="modal-title"></h2>
+          <button id="modal-close" type="button" class="btn btn-ghost btn-sm" aria-label="Fechar">✕</button>
+        </div>
+        <div id="modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
     <script src="/app.js" type="module"></script>
   </body>
 </html>

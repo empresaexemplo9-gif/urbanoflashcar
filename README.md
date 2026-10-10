@@ -17,6 +17,17 @@ código recuperado (veja [`DELIVERIES.md`](./DELIVERIES.md)).
   o passageiro vê os parceiros mais próximos (distância/ETA) antes de solicitar.
 - **Ciclo do motorista** — corridas disponíveis → aceitar → iniciar → concluir,
   com transições de estado validadas.
+- **Categorias de corrida** — Econômico, Conforto e XL, cada uma com multiplicador
+  de tarifa; a estimativa mostra o preço de cada categoria ("escolha seu carro").
+- **Cupom de desconto** — aplique um código (percentual ou fixo) sobre a tarifa;
+  vêm dois cupons de demonstração (`BEMVINDO10`, `URBANO5`).
+- **Agendar corrida** — solicite para um horário futuro; fica oculta aos
+  motoristas até a hora chegar.
+- **Gorjeta** — o passageiro adiciona gorjeta ao motorista após concluir.
+- **Avaliações mútuas** — passageiro e motorista se avaliam (1–5 + comentário);
+  a média aparece no perfil e ao lado dos motoristas próximos.
+- **Chat na corrida** — passageiro e motorista designado trocam mensagens.
+- **Recibo** — detalhamento da tarifa (base, categoria, cupom, gorjeta, total).
 - **Pagamento direto ao motorista** — ao concluir a corrida, abre-se um
   pagamento pendente; o passageiro paga **direto ao motorista por Pix ou
   cartão físico (maquininha)** e o motorista confirma o recebimento no app.
@@ -51,15 +62,25 @@ npm run dev         # com --watch
 ```
 
 Variáveis de ambiente úteis: `PORT`, `HOST`, `DATABASE_FILE`, `SESSION_TTL_MS`,
-e o modelo de tarifa (`FARE_BASE_CENTS`, `FARE_PER_KM_CENTS`,
-`FARE_PER_MIN_CENTS`, `FARE_MINIMUM_CENTS`, `FARE_AVG_SPEED_KMH`).
+o modelo de tarifa (`FARE_BASE_CENTS`, `FARE_PER_KM_CENTS`,
+`FARE_PER_MIN_CENTS`, `FARE_MINIMUM_CENTS`, `FARE_AVG_SPEED_KMH`) e a
+localização (`GEO_PHOTON_URL`, `GEO_VIACEP_URL`, `GEO_IP_URL`,
+`GEO_TIMEOUT_MS`, `GEO_DISABLED`).
 
 ## Localização real (gratuita, sem chave)
 
-Ao abrir **"Nova corrida"**, a origem é preenchida **automaticamente com a sua
-localização atual e real** (GPS do dispositivo; se indisponível/negado, cai para
-uma estimativa por IP — sem chave). Você pode ajustar no mapa, digitar ou usar
-o botão **"Usar minha localização"**.
+**A localização atual fica sempre ativa** para o passageiro: ao entrar, o app
+acompanha sua posição real continuamente (GPS do dispositivo via
+`watchPosition`; se indisponível/negado, cai uma vez para a estimativa por IP —
+sem chave) e mostra um indicador **"📍 Localização ativa: …"**. Ao abrir
+**"Nova corrida"** a origem já vem preenchida com essa posição; você pode
+ajustar no mapa, digitar ou usar o botão **"Usar minha localização"**.
+
+**Busca de endereço por rua + setor/bairro, ou por CEP.** Digite a rua com o
+setor/bairro (ex.: `Rua 3, Setor Oeste`) ou um CEP (`74110-010`). O CEP é
+resolvido pelo **ViaCEP** (sem chave) e geocodificado; a busca por texto é
+enviada ao Photon com **viés pela sua localização atual**, para que o resultado
+caia na sua cidade.
 
 A tela usa **mapa real + autocomplete de endereços** com serviços **gratuitos e
 sem API key**:
@@ -68,19 +89,38 @@ sem API key**:
   [OpenStreetMap](https://www.openstreetmap.org/).
 - **Busca/geocodificação de endereços:** [Photon](https://photon.komoot.io/)
   (projeto baseado em OSM).
+- **CEP → endereço:** [ViaCEP](https://viacep.com.br/) (sem chave).
+- **Localização aproximada por IP:** [ipwho.is](https://ipwho.is/) (sem chave).
+
+**O navegador só fala com o próprio app.** A busca de endereços, o reverse
+geocoding e o fallback por IP passam por rotas **same-origin** (`/api/geo/*`) —
+é o servidor que chama o Photon/IP, não o navegador. Isso resolve o caso comum
+de "a localização não funciona": requisições a terceiros feitas pelo navegador
+costumam ser bloqueadas por **ad-blockers / proteção contra rastreamento** ou
+barradas por **CORS**; uma rota do próprio app não é. Além disso, o fallback
+por IP usa o **IP real** que o servidor enxerga (respeitando `X-Forwarded-For`
+atrás de um proxy reverso), em vez de depender de o navegador alcançar um
+serviço externo.
+
+> **GPS preciso exige contexto seguro.** O `navigator.geolocation` do navegador
+> (a localização exata) só funciona em **HTTPS** ou em `localhost`. Servido por
+> HTTP puro num IP/host da rede, o navegador bloqueia o GPS e o app usa o
+> fallback por IP. Publique com HTTPS para ter a localização exata.
 
 Não é preciso cadastro, cartão nem chave — funciona de imediato (inclusive no
-app de desktop), bastando acesso à internet. Se os serviços/Leaflet não
-carregarem (offline), o app cai no modo de **presets/coordenadas manuais**.
+app de desktop, cujo servidor embutido faz as chamadas de geo). Se os serviços/
+Leaflet não carregarem (offline) ou com `GEO_DISABLED=1`, o app cai no modo de
+**presets/coordenadas manuais**.
 
 > **Uso em escala:** OSM/Photon são serviços públicos de uso justo. Para alto
 > volume em produção, considere **auto-hospedar** o Photon/Nominatim e um
-> servidor de tiles (ou um provedor), respeitando as políticas de uso do OSM.
+> servidor de tiles (ou um provedor) e apontar `GEO_PHOTON_URL`/`GEO_IP_URL`
+> para eles, respeitando as políticas de uso do OSM.
 
 ## Testar
 
 ```bash
-npm test            # 52 testes: unidade (tarifa/geo) + integração (API/dados/permissões/pagamento) + PWA + versão
+npm test            # 85 testes: unidade (tarifa/geo/geocoder/CEP/preços) + integração (API/dados/permissões/pagamento/localização/categorias/cupom/gorjeta/avaliação/agendamento/chat) + PWA + versão
 ```
 
 ## API
@@ -93,7 +133,11 @@ npm test            # 52 testes: unidade (tarifa/geo) + integração (API/dados/
 | POST | `/api/auth/login` | Autenticar, retorna token |
 | POST | `/api/auth/logout` | Encerrar sessão |
 | GET  | `/api/me` | Usuário atual |
-| POST | `/api/estimate` | Estimar tarifa (sem criar corrida) |
+| GET  | `/api/categories` | Categorias/tiers de corrida (econômico/conforto/XL) |
+| POST | `/api/estimate` | Estimar tarifa (`{category, promoCode}` opcionais; retorna preços por categoria) |
+| GET  | `/api/geo/ip` | Localização aproximada pelo IP do cliente (fallback do GPS) |
+| GET  | `/api/geo/search?q=&lat=&lng=` | Busca por rua + setor/bairro (Photon, com viés opcional) ou por CEP (ViaCEP) |
+| GET  | `/api/geo/reverse?lat=&lng=` | Reverse geocoding de uma coordenada |
 | POST | `/api/rides` | Solicitar corrida (passageiro) |
 | GET  | `/api/rides` | Minhas corridas |
 | GET  | `/api/rides/available` | Corridas abertas (motorista) |
@@ -101,7 +145,13 @@ npm test            # 52 testes: unidade (tarifa/geo) + integração (API/dados/
 | POST | `/api/rides/:id/accept` | Motorista aceita |
 | POST | `/api/rides/:id/start` | Motorista inicia |
 | POST | `/api/rides/:id/complete` | Motorista conclui (abre o pagamento) |
-| POST | `/api/rides/:id/cancel` | Passageiro ou motorista cancela |
+| POST | `/api/rides/:id/cancel` | Passageiro ou motorista cancela (`{reason}` opcional) |
+| POST | `/api/rides/:id/tip` | Passageiro dá gorjeta (`{tipCents}`) numa corrida concluída |
+| GET  | `/api/rides/:id/receipt` | Recibo detalhado (base, cupom, gorjeta, total) |
+| POST | `/api/rides/:id/rate` | Avaliar a contraparte (`{stars 1–5, comment}`) após concluir |
+| GET  | `/api/rides/:id/rating` | Avaliação que o usuário já deu nesta corrida |
+| GET  | `/api/rides/:id/messages` | Mensagens do chat da corrida |
+| POST | `/api/rides/:id/messages` | Enviar mensagem no chat (`{body}`) |
 | GET  | `/api/rides/:id/payment` | Estado do pagamento da corrida |
 | POST | `/api/rides/:id/payment/confirm` | Motorista confirma recebimento (`{method: pix\|card}`) |
 | GET  | `/api/favorites` | Rotas favoritas do usuário |
