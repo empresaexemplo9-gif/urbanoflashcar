@@ -14,12 +14,17 @@ import { createRidesRepo } from './repositories/rides.js';
 import { createPaymentsRepo } from './repositories/payments.js';
 import { createFavoritesRepo } from './repositories/favorites.js';
 import { createDriverStatusRepo } from './repositories/driverStatus.js';
+import { createRatingsRepo } from './repositories/ratings.js';
+import { createMessagesRepo } from './repositories/messages.js';
+import { createPromosRepo } from './repositories/promos.js';
 import { createAuthService } from './services/auth.js';
 import { createRidesService } from './services/rides.js';
 import { createPaymentsService } from './services/payments.js';
 import { createFavoritesService } from './services/favorites.js';
 import { createDriversService } from './services/drivers.js';
 import { createGeoService } from './services/geo.js';
+import { createRatingsService } from './services/ratings.js';
+import { createMessagesService } from './services/messages.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', 'public');
@@ -37,13 +42,18 @@ export function createApp(db, config, { now, fetchImpl } = {}) {
   const paymentsRepo = createPaymentsRepo(db);
   const favoritesRepo = createFavoritesRepo(db);
   const driverStatusRepo = createDriverStatusRepo(db);
+  const ratingsRepo = createRatingsRepo(db);
+  const messagesRepo = createMessagesRepo(db);
+  const promosRepo = createPromosRepo(db);
 
   const auth = createAuthService({ users, sessions, config, now });
   const payments = createPaymentsService({ payments: paymentsRepo, rides, now });
-  const rideService = createRidesService({ rides, config, payments, now });
+  const rideService = createRidesService({ rides, config, promos: promosRepo, payments, now });
   const favoritesService = createFavoritesService({ favorites: favoritesRepo, now });
   const driversService = createDriversService({ driverStatus: driverStatusRepo, config, now });
   const geoService = createGeoService({ config, fetchImpl: fetchImpl ?? globalThis.fetch });
+  const ratingsService = createRatingsService({ ratings: ratingsRepo, rides, now });
+  const messagesService = createMessagesService({ messages: messagesRepo, rides, now });
 
   const router = new Router();
 
@@ -87,10 +97,17 @@ export function createApp(db, config, { now, fetchImpl } = {}) {
   });
   router.get('/api/me', (ctx) => {
     const u = requireUser(ctx);
-    return { user: { id: u.id, email: u.email, name: u.name, role: u.role, createdAt: u.created_at } };
+    return {
+      user: { id: u.id, email: u.email, name: u.name, role: u.role, createdAt: u.created_at },
+      rating: ratingsService.summary(u.id),
+    };
   });
 
+  // --- Ride categories/tiers (public helper for "choose your ride") ---
+  router.get('/api/categories', () => ({ categories: config.categories }));
+
   // --- Fare estimate (public helper for the journey) ---
+  // Accepts an optional { category, promoCode } for a full price breakdown.
   router.post('/api/estimate', (ctx) => rideService.estimate(ctx.body || {}));
 
   // --- Real location (public helpers), proxied same-origin so the browser
@@ -131,17 +148,52 @@ export function createApp(db, config, { now, fetchImpl } = {}) {
     return { ride: rideService.get(u, parseId(ctx)) };
   });
 
-  for (const action of ['accept', 'start', 'cancel']) {
+  for (const action of ['accept', 'start']) {
     router.post(`/api/rides/:id/${action}`, (ctx) => {
       const u = requireUser(ctx);
       return { ride: rideService.transition(u, parseId(ctx), action) };
     });
   }
+  // Cancel takes an optional reason (why the trip was cancelled).
+  router.post('/api/rides/:id/cancel', (ctx) => {
+    const u = requireUser(ctx);
+    return { ride: rideService.transition(u, parseId(ctx), 'cancel', { reason: (ctx.body || {}).reason }) };
+  });
 
   // Completing the ride opens a payment (pending) to settle with the driver.
   router.post('/api/rides/:id/complete', (ctx) => {
     const u = requireUser(ctx);
     return rideService.complete(u, parseId(ctx));
+  });
+
+  // Rider tips the driver on a completed ride; itemised receipt for either party.
+  router.post('/api/rides/:id/tip', (ctx) => {
+    const u = requireUser(ctx);
+    return { ride: rideService.tip(u, parseId(ctx), (ctx.body || {}).tipCents) };
+  });
+  router.get('/api/rides/:id/receipt', (ctx) => {
+    const u = requireUser(ctx);
+    return { receipt: rideService.receipt(u, parseId(ctx)) };
+  });
+
+  // --- Ratings: mutual, after completion ---
+  router.post('/api/rides/:id/rate', (ctx) => {
+    const u = requireUser(ctx);
+    return json(201, { rating: ratingsService.rate(u, parseId(ctx), ctx.body || {}) });
+  });
+  router.get('/api/rides/:id/rating', (ctx) => {
+    const u = requireUser(ctx);
+    return { rating: ratingsService.mine(u, parseId(ctx)) };
+  });
+
+  // --- In-ride chat between rider and assigned driver ---
+  router.get('/api/rides/:id/messages', (ctx) => {
+    const u = requireUser(ctx);
+    return { messages: messagesService.list(u, parseId(ctx)) };
+  });
+  router.post('/api/rides/:id/messages', (ctx) => {
+    const u = requireUser(ctx);
+    return json(201, { message: messagesService.send(u, parseId(ctx), (ctx.body || {}).body) });
   });
 
   // --- Payments: direct to the driver, Pix or physical card (P004) ---
@@ -181,14 +233,14 @@ export function createApp(db, config, { now, fetchImpl } = {}) {
   });
   router.get('/api/drivers/nearby', (ctx) => {
     const u = requireUser(ctx);
-    return {
-      drivers: driversService.nearby(u, {
-        lat: ctx.query.get('lat'),
-        lng: ctx.query.get('lng'),
-        radiusKm: ctx.query.get('radiusKm'),
-        limit: ctx.query.get('limit'),
-      }),
-    };
+    const drivers = driversService.nearby(u, {
+      lat: ctx.query.get('lat'),
+      lng: ctx.query.get('lng'),
+      radiusKm: ctx.query.get('radiusKm'),
+      limit: ctx.query.get('limit'),
+    });
+    // Attach each driver's aggregate rating so riders can choose with it.
+    return { drivers: drivers.map((d) => ({ ...d, rating: ratingsService.summary(d.driverId) })) };
   });
 
   router.serveStatic(PUBLIC_DIR);

@@ -17,6 +17,13 @@ export function publicRide(row) {
     distanceKm: row.distance_km,
     durationMin: row.duration_min,
     fareCents: row.fare_cents,
+    category: row.category ?? 'economy',
+    baseFareCents: row.base_fare_cents ?? row.fare_cents,
+    discountCents: row.discount_cents ?? 0,
+    promoCode: row.promo_code ?? null,
+    tipCents: row.tip_cents ?? 0,
+    scheduledFor: row.scheduled_for ?? null,
+    cancelReason: row.cancel_reason ?? null,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -37,6 +44,30 @@ export function publicFavorite(row) {
     label: row.label,
     pickup: { label: row.pickup_label, lat: row.pickup_lat, lng: row.pickup_lng },
     dropoff: { label: row.dropoff_label, lat: row.dropoff_lat, lng: row.dropoff_lng },
+    createdAt: row.created_at,
+  };
+}
+
+export function publicRating(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    rideId: row.ride_id,
+    raterId: row.rater_id,
+    rateeId: row.ratee_id,
+    stars: row.stars,
+    comment: row.comment ?? null,
+    createdAt: row.created_at,
+  };
+}
+
+export function publicMessage(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    rideId: row.ride_id,
+    senderId: row.sender_id,
+    body: row.body,
     createdAt: row.created_at,
   };
 }

@@ -64,4 +64,16 @@ export const config = {
     minimumCents: Number(process.env.FARE_MINIMUM_CENTS) || 600,
     avgSpeedKmh: Number(process.env.FARE_AVG_SPEED_KMH) || 30,
   },
+
+  // Ride categories/tiers ("choose your ride"), each a multiplier over the base
+  // fare — the universal Uber/99 pricing tool. 'economy' MUST stay 1.0 so the
+  // default price is unchanged. Order defines how options are listed.
+  categories: [
+    { id: 'economy', label: 'Econômico', multiplier: 1.0, seats: 4, description: 'O mais barato' },
+    { id: 'comfort', label: 'Conforto', multiplier: 1.3, seats: 4, description: 'Carros novos, mais espaço' },
+    { id: 'xl', label: 'XL (grande)', multiplier: 1.7, seats: 6, description: 'Até 6 pessoas' },
+  ],
+
+  // Tip (gorjeta) bounds in cents: a tip must be ≥ 0 and ≤ this cap.
+  maxTipCents: Number(process.env.MAX_TIP_CENTS) || 10000,
 };

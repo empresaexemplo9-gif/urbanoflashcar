@@ -176,6 +176,19 @@
               </div>
             </div>
 
+            <!-- Escolha de categoria, cupom e agendamento -->
+            <div class="ride-options">
+              <div id="category-list" class="category-list" role="radiogroup" aria-label="Categoria da corrida"></div>
+              <div class="opt-row">
+                <label>Cupom
+                  <input type="text" id="promo-input" class="addr" placeholder="Código (ex.: BEMVINDO10)" autocomplete="off" />
+                </label>
+                <label>Agendar (opcional)
+                  <input type="datetime-local" id="schedule-input" class="addr" />
+                </label>
+              </div>
+            </div>
+
             <div class="actions">
               <button type="button" id="estimate-btn" class="btn btn-ghost">Estimar</button>
               <button type="button" id="find-drivers-btn" class="btn btn-ghost">Motoristas próximos</button>
@@ -222,6 +235,18 @@
     </footer>
 
     <div id="toast" class="toast" role="status" aria-live="assertive" hidden></div>
+
+    <!-- Reusable modal for the in-ride chat and the trip receipt -->
+    <div id="modal" class="modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-head">
+          <h2 id="modal-title"></h2>
+          <button id="modal-close" type="button" class="btn btn-ghost btn-sm" aria-label="Fechar">✕</button>
+        </div>
+        <div id="modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
     <script src="/app.js" type="module"></script>
   </body>
 </html>

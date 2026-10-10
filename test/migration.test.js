@@ -55,3 +55,21 @@ test('charges from a previous release are backfilled into payments', () => {
   assert.equal(count.n, 2);
   db.close();
 });
+
+test('new ride columns and seed promos are present and idempotent on reopen', () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'ufc-mig2-')), 'app.db');
+  let db = openDatabase(file);
+  const cols = new Set(db.prepare('PRAGMA table_info(rides)').all().map((c) => c.name));
+  for (const c of ['category', 'base_fare_cents', 'discount_cents', 'promo_code', 'tip_cents', 'scheduled_for', 'cancel_reason']) {
+    assert.ok(cols.has(c), `rides.${c} exists`);
+  }
+  const promos1 = db.prepare('SELECT COUNT(*) AS n FROM promos').get().n;
+  assert.ok(promos1 >= 2, 'demo coupons seeded');
+  db.close();
+
+  // Reopening must not duplicate the seeded coupons.
+  db = openDatabase(file);
+  const promos2 = db.prepare('SELECT COUNT(*) AS n FROM promos').get().n;
+  assert.equal(promos2, promos1);
+  db.close();
+});

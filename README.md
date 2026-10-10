@@ -17,6 +17,17 @@ código recuperado (veja [`DELIVERIES.md`](./DELIVERIES.md)).
   o passageiro vê os parceiros mais próximos (distância/ETA) antes de solicitar.
 - **Ciclo do motorista** — corridas disponíveis → aceitar → iniciar → concluir,
   com transições de estado validadas.
+- **Categorias de corrida** — Econômico, Conforto e XL, cada uma com multiplicador
+  de tarifa; a estimativa mostra o preço de cada categoria ("escolha seu carro").
+- **Cupom de desconto** — aplique um código (percentual ou fixo) sobre a tarifa;
+  vêm dois cupons de demonstração (`BEMVINDO10`, `URBANO5`).
+- **Agendar corrida** — solicite para um horário futuro; fica oculta aos
+  motoristas até a hora chegar.
+- **Gorjeta** — o passageiro adiciona gorjeta ao motorista após concluir.
+- **Avaliações mútuas** — passageiro e motorista se avaliam (1–5 + comentário);
+  a média aparece no perfil e ao lado dos motoristas próximos.
+- **Chat na corrida** — passageiro e motorista designado trocam mensagens.
+- **Recibo** — detalhamento da tarifa (base, categoria, cupom, gorjeta, total).
 - **Pagamento direto ao motorista** — ao concluir a corrida, abre-se um
   pagamento pendente; o passageiro paga **direto ao motorista por Pix ou
   cartão físico (maquininha)** e o motorista confirma o recebimento no app.
@@ -109,7 +120,7 @@ Leaflet não carregarem (offline) ou com `GEO_DISABLED=1`, o app cai no modo de
 ## Testar
 
 ```bash
-npm test            # 69 testes: unidade (tarifa/geo/geocoder/CEP) + integração (API/dados/permissões/pagamento/localização) + PWA + versão
+npm test            # 85 testes: unidade (tarifa/geo/geocoder/CEP/preços) + integração (API/dados/permissões/pagamento/localização/categorias/cupom/gorjeta/avaliação/agendamento/chat) + PWA + versão
 ```
 
 ## API
@@ -122,7 +133,8 @@ npm test            # 69 testes: unidade (tarifa/geo/geocoder/CEP) + integraçã
 | POST | `/api/auth/login` | Autenticar, retorna token |
 | POST | `/api/auth/logout` | Encerrar sessão |
 | GET  | `/api/me` | Usuário atual |
-| POST | `/api/estimate` | Estimar tarifa (sem criar corrida) |
+| GET  | `/api/categories` | Categorias/tiers de corrida (econômico/conforto/XL) |
+| POST | `/api/estimate` | Estimar tarifa (`{category, promoCode}` opcionais; retorna preços por categoria) |
 | GET  | `/api/geo/ip` | Localização aproximada pelo IP do cliente (fallback do GPS) |
 | GET  | `/api/geo/search?q=&lat=&lng=` | Busca por rua + setor/bairro (Photon, com viés opcional) ou por CEP (ViaCEP) |
 | GET  | `/api/geo/reverse?lat=&lng=` | Reverse geocoding de uma coordenada |
@@ -133,7 +145,13 @@ npm test            # 69 testes: unidade (tarifa/geo/geocoder/CEP) + integraçã
 | POST | `/api/rides/:id/accept` | Motorista aceita |
 | POST | `/api/rides/:id/start` | Motorista inicia |
 | POST | `/api/rides/:id/complete` | Motorista conclui (abre o pagamento) |
-| POST | `/api/rides/:id/cancel` | Passageiro ou motorista cancela |
+| POST | `/api/rides/:id/cancel` | Passageiro ou motorista cancela (`{reason}` opcional) |
+| POST | `/api/rides/:id/tip` | Passageiro dá gorjeta (`{tipCents}`) numa corrida concluída |
+| GET  | `/api/rides/:id/receipt` | Recibo detalhado (base, cupom, gorjeta, total) |
+| POST | `/api/rides/:id/rate` | Avaliar a contraparte (`{stars 1–5, comment}`) após concluir |
+| GET  | `/api/rides/:id/rating` | Avaliação que o usuário já deu nesta corrida |
+| GET  | `/api/rides/:id/messages` | Mensagens do chat da corrida |
+| POST | `/api/rides/:id/messages` | Enviar mensagem no chat (`{body}`) |
 | GET  | `/api/rides/:id/payment` | Estado do pagamento da corrida |
 | POST | `/api/rides/:id/payment/confirm` | Motorista confirma recebimento (`{method: pix\|card}`) |
 | GET  | `/api/favorites` | Rotas favoritas do usuário |

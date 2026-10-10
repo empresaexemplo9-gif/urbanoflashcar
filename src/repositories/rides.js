@@ -5,14 +5,16 @@
 export function createRidesRepo(db) {
   const columns = `id, rider_id, driver_id, pickup_label, pickup_lat, pickup_lng,
     dropoff_label, dropoff_lat, dropoff_lng, distance_km, duration_min,
-    fare_cents, status, created_at, updated_at`;
+    fare_cents, category, base_fare_cents, discount_cents, promo_code, tip_cents,
+    scheduled_for, cancel_reason, status, created_at, updated_at`;
 
   // Same columns prefixed with the rides alias, plus a compact payment summary,
   // for the list queries that join the payments table.
   const listColumns = `r.id, r.rider_id, r.driver_id, r.pickup_label, r.pickup_lat,
     r.pickup_lng, r.dropoff_label, r.dropoff_lat, r.dropoff_lng, r.distance_km,
-    r.duration_min, r.fare_cents, r.status, r.created_at, r.updated_at,
-    p.status AS payment_status, p.method AS payment_method`;
+    r.duration_min, r.fare_cents, r.category, r.base_fare_cents, r.discount_cents,
+    r.promo_code, r.tip_cents, r.scheduled_for, r.cancel_reason, r.status,
+    r.created_at, r.updated_at, p.status AS payment_status, p.method AS payment_method`;
 
   return {
     create(ride) {
@@ -21,8 +23,9 @@ export function createRidesRepo(db) {
           `INSERT INTO rides
              (rider_id, pickup_label, pickup_lat, pickup_lng,
               dropoff_label, dropoff_lat, dropoff_lng,
-              distance_km, duration_min, fare_cents, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              distance_km, duration_min, fare_cents, category, base_fare_cents,
+              discount_cents, promo_code, scheduled_for, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           ride.riderId,
@@ -35,6 +38,11 @@ export function createRidesRepo(db) {
           ride.distanceKm,
           ride.durationMin,
           ride.fareCents,
+          ride.category ?? 'economy',
+          ride.baseFareCents ?? ride.fareCents,
+          ride.discountCents ?? 0,
+          ride.promoCode ?? null,
+          ride.scheduledFor ?? null,
           ride.status,
           ride.createdAt,
           ride.updatedAt,
@@ -55,10 +63,16 @@ export function createRidesRepo(db) {
         .all(riderId);
     },
 
-    listOpenForDrivers() {
+    // Open rides a driver may accept. Rides scheduled for the future are hidden
+    // until their time arrives (nowIso); immediate rides have scheduled_for NULL.
+    listOpenForDrivers(nowIso) {
       return db
-        .prepare(`SELECT ${columns} FROM rides WHERE status = 'requested' ORDER BY created_at ASC, id ASC`)
-        .all();
+        .prepare(
+          `SELECT ${columns} FROM rides
+           WHERE status = 'requested' AND (scheduled_for IS NULL OR scheduled_for <= ?)
+           ORDER BY created_at ASC, id ASC`,
+        )
+        .all(nowIso);
     },
 
     listAssignedToDriver(driverId) {
@@ -82,6 +96,16 @@ export function createRidesRepo(db) {
           'UPDATE rides SET status = ?, driver_id = ?, updated_at = ? WHERE id = ?',
         ).run(status, driverId, updatedAt, id);
       }
+      return this.findById(id);
+    },
+
+    setCancelReason(id, reason, updatedAt) {
+      db.prepare('UPDATE rides SET cancel_reason = ?, updated_at = ? WHERE id = ?').run(reason, updatedAt, id);
+      return this.findById(id);
+    },
+
+    setTip(id, tipCents, updatedAt) {
+      db.prepare('UPDATE rides SET tip_cents = ?, updated_at = ? WHERE id = ?').run(tipCents, updatedAt, id);
       return this.findById(id);
     },
   };
