@@ -4,10 +4,15 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startTestServer } from './helpers.js';
-import { searchPlaces, reversePlace, locateByIp } from '../src/lib/geocode.js';
+import { searchPlaces, reversePlace, locateByIp, lookupCep, isCep, normalizeCep } from '../src/lib/geocode.js';
 import { clientIp } from '../src/services/geo.js';
 
-const GEO = { photonUrl: 'https://photon.test', ipUrl: 'https://ip.test/{ip}', timeoutMs: 1000 };
+const GEO = {
+  photonUrl: 'https://photon.test',
+  ipUrl: 'https://ip.test/{ip}',
+  viaCepUrl: 'https://viacep.test/ws/{cep}/json/',
+  timeoutMs: 1000,
+};
 
 // A fetch stub: maps a substring of the URL to a JSON payload (or an error).
 function stubFetch(routes) {
@@ -51,6 +56,41 @@ test('searchPlaces returns [] on upstream failure (never throws)', async () => {
   assert.deepEqual(await searchPlaces('paulista', { ...GEO, fetchImpl }), []);
 });
 
+test('searchPlaces biases by lat/lon when given', async () => {
+  let seen = '';
+  const fetchImpl = async (url) => { seen = String(url); return { ok: true, json: async () => ({ features: [PHOTON_FEATURE] }) }; };
+  await searchPlaces('rua 3 setor oeste', { ...GEO, fetchImpl, lat: -16.68, lon: -49.26 });
+  assert.match(seen, /lat=-16\.68/);
+  assert.match(seen, /lon=-49\.26/);
+});
+
+test('normalizeCep / isCep accept 8 digits with or without a dash', () => {
+  assert.equal(normalizeCep('74110-010'), '74110010');
+  assert.equal(normalizeCep('74110010'), '74110010');
+  assert.equal(normalizeCep('7411'), null);
+  assert.equal(isCep('74110-010'), true);
+  assert.equal(isCep('rua 3'), false);
+});
+
+test('lookupCep resolves a CEP to a located place (ViaCEP + geocode)', async () => {
+  const fetchImpl = stubFetch({
+    'viacep.test': { cep: '74110-010', logradouro: 'Rua 3', bairro: 'Setor Oeste', localidade: 'Goiânia', uf: 'GO' },
+    '/api?q=': { features: [PHOTON_FEATURE] },
+  });
+  const places = await lookupCep('74110-010', { ...GEO, fetchImpl });
+  assert.equal(places.length, 1);
+  assert.equal(places[0].lat, -23.5614); // coordinate from the geocoder
+  assert.match(places[0].label, /Rua 3/);
+  assert.match(places[0].label, /Setor Oeste/);
+  assert.match(places[0].label, /Goiânia - GO/);
+  assert.match(places[0].label, /CEP 74110-010/);
+});
+
+test('lookupCep returns [] for an unknown CEP (ViaCEP erro)', async () => {
+  const fetchImpl = stubFetch({ 'viacep.test': { erro: true } });
+  assert.deepEqual(await lookupCep('00000-000', { ...GEO, fetchImpl }), []);
+});
+
 test('reversePlace falls back to the coordinate when nothing is found', async () => {
   const fetchImpl = stubFetch({ '/reverse': { features: [] } });
   const place = await reversePlace(-23.5614, -46.6559, { ...GEO, fetchImpl });
@@ -82,6 +122,7 @@ test('clientIp honours X-Forwarded-For and strips IPv6 mapping', () => {
 let srv;
 before(async () => {
   const fetchImpl = stubFetch({
+    'viacep.com.br': { cep: '74110-010', logradouro: 'Rua 3', bairro: 'Setor Oeste', localidade: 'Goiânia', uf: 'GO' },
     '/api?q=': { features: [PHOTON_FEATURE] },
     '/reverse': { features: [PHOTON_FEATURE] },
     'ipwho.is': { latitude: -23.55, longitude: -46.63, city: 'São Paulo', region: 'SP', country: 'Brasil' },
@@ -95,6 +136,14 @@ test('GET /api/geo/search proxies autocomplete (no auth required)', async () => 
   assert.equal(res.status, 200);
   assert.equal(res.body.places.length, 1);
   assert.match(res.body.places[0].label, /Paulista/);
+});
+
+test('GET /api/geo/search resolves a CEP to a located place', async () => {
+  const res = await srv.request('GET', '/api/geo/search?q=74110-010');
+  assert.equal(res.status, 200);
+  assert.equal(res.body.places.length, 1);
+  assert.match(res.body.places[0].label, /CEP 74110-010/);
+  assert.equal(res.body.places[0].lat, -23.5614);
 });
 
 test('GET /api/geo/reverse returns a labelled place', async () => {

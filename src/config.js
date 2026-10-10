@@ -41,6 +41,9 @@ export const config = {
   geo: {
     // Photon (OSM) for address autocomplete + reverse geocoding. No API key.
     photonUrl: process.env.GEO_PHOTON_URL || 'https://photon.komoot.io',
+    // ViaCEP (keyless) resolves a Brazilian CEP to its street address, which we
+    // then geocode. "{cep}" is replaced with the 8-digit CEP.
+    viaCepUrl: process.env.GEO_VIACEP_URL || 'https://viacep.com.br/ws/{cep}/json/',
     // Keyless IP geolocation. "{ip}" is replaced with the client IP; a bare
     // base (no placeholder) resolves the caller's own IP. ipwho.is is CORS/
     // key-free and returns { latitude, longitude, city, region, country }.

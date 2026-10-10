@@ -28,6 +28,16 @@ async function getJson(url, { fetchImpl, timeoutMs }) {
 
 const isFiniteNum = (n) => typeof n === 'number' && Number.isFinite(n);
 
+// A Brazilian CEP is 8 digits, usually written NNNNN-NNN.
+export function normalizeCep(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  return digits.length === 8 ? digits : null;
+}
+export function isCep(value) {
+  return normalizeCep(value) !== null;
+}
+const formatCep = (d) => `${d.slice(0, 5)}-${d.slice(5)}`;
+
 // Turn a Photon GeoJSON feature into our flat place { label, lat, lng }.
 export function featureToPlace(f) {
   if (!f || !f.geometry || !Array.isArray(f.geometry.coordinates)) return null;
@@ -40,14 +50,43 @@ export function featureToPlace(f) {
   return { label, lat, lng };
 }
 
-// Address autocomplete. Returns an array of places (possibly empty).
-export async function searchPlaces(query, { photonUrl, fetchImpl, timeoutMs, limit = 5 }) {
+// Address autocomplete. Returns an array of places (possibly empty). When a
+// bias coordinate (lat/lon) is given, results near it are ranked first — so a
+// street + sector search resolves to the one in the rider's own city.
+export async function searchPlaces(query, { photonUrl, fetchImpl, timeoutMs, limit = 5, lat, lon }) {
   const q = String(query || '').trim();
   if (q.length < 3) return [];
-  const url = `${photonUrl}/api?q=${encodeURIComponent(q)}&limit=${limit}&lang=pt`;
+  let url = `${photonUrl}/api?q=${encodeURIComponent(q)}&limit=${limit}&lang=pt`;
+  if (isFiniteNum(Number(lat)) && isFiniteNum(Number(lon))) {
+    url += `&lat=${Number(lat)}&lon=${Number(lon)}`;
+  }
   const data = await getJson(url, { fetchImpl, timeoutMs });
   if (!data || !Array.isArray(data.features)) return [];
   return data.features.map(featureToPlace).filter(Boolean);
+}
+
+// Resolve a Brazilian CEP to a located place. ViaCEP (keyless) gives the
+// address (logradouro/bairro/cidade/UF); we then geocode that address through
+// Photon to attach coordinates — the label stays the authoritative CEP address.
+export async function lookupCep(cep, { viaCepUrl, photonUrl, fetchImpl, timeoutMs, lat, lon }) {
+  const digits = normalizeCep(cep);
+  if (!digits) return [];
+  const addr = await getJson(viaCepUrl.replace('{cep}', digits), { fetchImpl, timeoutMs });
+  if (!addr || addr.erro) return [];
+
+  const { logradouro, bairro, localidade, uf } = addr;
+  const labelParts = [logradouro, bairro, localidade && uf ? `${localidade} - ${uf}` : localidade, `CEP ${formatCep(digits)}`].filter(Boolean);
+  const label = labelParts.join(' · ');
+
+  // Geocode the most specific address we have to get coordinates.
+  const queries = [];
+  if (logradouro && localidade) queries.push(`${logradouro}, ${bairro ? bairro + ', ' : ''}${localidade}, ${uf}`);
+  if (localidade) queries.push(`${localidade}, ${uf}`);
+  for (const q of queries) {
+    const found = await searchPlaces(q, { photonUrl, fetchImpl, timeoutMs, limit: 1, lat, lon });
+    if (found.length) return [{ label, lat: found[0].lat, lng: found[0].lng }];
+  }
+  return []; // could not attach a coordinate — nothing usable for a ride.
 }
 
 // Reverse geocode a coordinate to a human label. Always returns a place:

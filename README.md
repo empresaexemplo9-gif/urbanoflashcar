@@ -53,14 +53,23 @@ npm run dev         # com --watch
 Variáveis de ambiente úteis: `PORT`, `HOST`, `DATABASE_FILE`, `SESSION_TTL_MS`,
 o modelo de tarifa (`FARE_BASE_CENTS`, `FARE_PER_KM_CENTS`,
 `FARE_PER_MIN_CENTS`, `FARE_MINIMUM_CENTS`, `FARE_AVG_SPEED_KMH`) e a
-localização (`GEO_PHOTON_URL`, `GEO_IP_URL`, `GEO_TIMEOUT_MS`, `GEO_DISABLED`).
+localização (`GEO_PHOTON_URL`, `GEO_VIACEP_URL`, `GEO_IP_URL`,
+`GEO_TIMEOUT_MS`, `GEO_DISABLED`).
 
 ## Localização real (gratuita, sem chave)
 
-Ao abrir **"Nova corrida"**, a origem é preenchida **automaticamente com a sua
-localização atual e real** (GPS do dispositivo; se indisponível/negado, cai para
-uma estimativa por IP — sem chave). Você pode ajustar no mapa, digitar ou usar
-o botão **"Usar minha localização"**.
+**A localização atual fica sempre ativa** para o passageiro: ao entrar, o app
+acompanha sua posição real continuamente (GPS do dispositivo via
+`watchPosition`; se indisponível/negado, cai uma vez para a estimativa por IP —
+sem chave) e mostra um indicador **"📍 Localização ativa: …"**. Ao abrir
+**"Nova corrida"** a origem já vem preenchida com essa posição; você pode
+ajustar no mapa, digitar ou usar o botão **"Usar minha localização"**.
+
+**Busca de endereço por rua + setor/bairro, ou por CEP.** Digite a rua com o
+setor/bairro (ex.: `Rua 3, Setor Oeste`) ou um CEP (`74110-010`). O CEP é
+resolvido pelo **ViaCEP** (sem chave) e geocodificado; a busca por texto é
+enviada ao Photon com **viés pela sua localização atual**, para que o resultado
+caia na sua cidade.
 
 A tela usa **mapa real + autocomplete de endereços** com serviços **gratuitos e
 sem API key**:
@@ -69,6 +78,7 @@ sem API key**:
   [OpenStreetMap](https://www.openstreetmap.org/).
 - **Busca/geocodificação de endereços:** [Photon](https://photon.komoot.io/)
   (projeto baseado em OSM).
+- **CEP → endereço:** [ViaCEP](https://viacep.com.br/) (sem chave).
 - **Localização aproximada por IP:** [ipwho.is](https://ipwho.is/) (sem chave).
 
 **O navegador só fala com o próprio app.** A busca de endereços, o reverse
@@ -99,7 +109,7 @@ Leaflet não carregarem (offline) ou com `GEO_DISABLED=1`, o app cai no modo de
 ## Testar
 
 ```bash
-npm test            # 64 testes: unidade (tarifa/geo/geocoder) + integração (API/dados/permissões/pagamento/localização) + PWA + versão
+npm test            # 69 testes: unidade (tarifa/geo/geocoder/CEP) + integração (API/dados/permissões/pagamento/localização) + PWA + versão
 ```
 
 ## API
@@ -114,7 +124,7 @@ npm test            # 64 testes: unidade (tarifa/geo/geocoder) + integração (A
 | GET  | `/api/me` | Usuário atual |
 | POST | `/api/estimate` | Estimar tarifa (sem criar corrida) |
 | GET  | `/api/geo/ip` | Localização aproximada pelo IP do cliente (fallback do GPS) |
-| GET  | `/api/geo/search?q=` | Autocomplete de endereços (proxy do Photon/OSM) |
+| GET  | `/api/geo/search?q=&lat=&lng=` | Busca por rua + setor/bairro (Photon, com viés opcional) ou por CEP (ViaCEP) |
 | GET  | `/api/geo/reverse?lat=&lng=` | Reverse geocoding de uma coordenada |
 | POST | `/api/rides` | Solicitar corrida (passageiro) |
 | GET  | `/api/rides` | Minhas corridas |

@@ -3,7 +3,7 @@
 // browser only ever talks to this app (immune to ad-blockers/CORS) and the IP
 // fallback uses the real client IP the server sees.
 
-import { searchPlaces, reversePlace, locateByIp } from '../lib/geocode.js';
+import { searchPlaces, reversePlace, locateByIp, lookupCep, isCep } from '../lib/geocode.js';
 
 // Private/loopback ranges never geolocate — skip the upstream call and let the
 // provider resolve the caller's own IP (or return nothing) instead.
@@ -30,12 +30,20 @@ export function clientIp(req) {
 }
 
 export function createGeoService({ config, fetchImpl = globalThis.fetch }) {
-  const { photonUrl, ipUrl, timeoutMs, disabled } = config.geo;
+  const { photonUrl, viaCepUrl, ipUrl, timeoutMs, disabled } = config.geo;
   const opts = { photonUrl, fetchImpl, timeoutMs };
 
-  async function search(query) {
+  // Address search. A CEP (postal code) is resolved via ViaCEP; otherwise the
+  // query is a street + sector/neighbourhood, biased to the rider's position
+  // (lat/lng) so the right city wins. `bias` is optional { lat, lng }.
+  async function search(query, bias = {}) {
     if (disabled) return [];
-    return searchPlaces(query, { ...opts, limit: 5 });
+    // Query params arrive as strings; '' / null / non-numeric mean "no bias".
+    const num = (v) => { const n = Number(v); return v === '' || v == null || !Number.isFinite(n) ? undefined : n; };
+    const lat = num(bias.lat);
+    const lon = num(bias.lng);
+    if (isCep(query)) return lookupCep(query, { ...opts, viaCepUrl, lat, lon });
+    return searchPlaces(query, { ...opts, limit: 5, lat, lon });
   }
 
   async function reverse(lat, lng) {

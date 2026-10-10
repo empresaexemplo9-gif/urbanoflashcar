@@ -97,9 +97,13 @@ export function createApp(db, config, { now, fetchImpl } = {}) {
   // never calls a third party directly. See src/services/geo.js. ---
   // Approximate position from the caller's IP — the device-GPS fallback.
   router.get('/api/geo/ip', async (ctx) => ({ place: await geoService.fromRequest(ctx.req) }));
-  // Address autocomplete.
+  // Address autocomplete by street + sector/neighbourhood, or by CEP. Optional
+  // lat/lng bias the results toward the rider's current position.
   router.get('/api/geo/search', async (ctx) => ({
-    places: await geoService.search(ctx.query.get('q') || ''),
+    places: await geoService.search(ctx.query.get('q') || '', {
+      lat: ctx.query.get('lat'),
+      lng: ctx.query.get('lng'),
+    }),
   }));
   // Reverse geocode a coordinate to a human-readable label.
   router.get('/api/geo/reverse', async (ctx) => {

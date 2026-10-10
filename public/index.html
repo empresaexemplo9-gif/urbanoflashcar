@@ -134,17 +134,20 @@
             <button id="back-home-btn" type="button" class="btn btn-ghost btn-sm">← Voltar</button>
           </div>
           <form id="ride-form" class="form maps-off" novalidate>
+            <!-- Localização atual sempre ativa -->
+            <div id="geo-status" class="geo-status" aria-live="polite"></div>
+
             <!-- Mapa real gratuito (Leaflet + OpenStreetMap) -->
             <div id="map" class="map" aria-label="Mapa" role="application"></div>
 
-            <!-- Busca de endereços reais (Photon / OpenStreetMap) -->
+            <!-- Busca por rua + setor/bairro, ou por CEP (Photon / ViaCEP) -->
             <div class="maps-inputs">
               <label>Origem
-                <input type="text" id="pickup-search" class="addr" placeholder="Buscar endereço de origem" autocomplete="off" />
+                <input type="text" id="pickup-search" class="addr" placeholder="Rua e setor/bairro (ex.: Rua 3, Setor Oeste) ou CEP" autocomplete="off" />
               </label>
               <button type="button" id="geoloc-btn" class="btn btn-ghost btn-sm">📍 Usar minha localização</button>
               <label>Destino
-                <input type="text" id="dropoff-search" class="addr" placeholder="Buscar endereço de destino" autocomplete="off" />
+                <input type="text" id="dropoff-search" class="addr" placeholder="Rua e setor/bairro ou CEP (ex.: 74110-010)" autocomplete="off" />
               </label>
             </div>
 

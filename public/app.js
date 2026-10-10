@@ -79,6 +79,7 @@ function render() {
       showRiderScreen('home');
       loadRiderRides();
       loadFavorites();
+      startLiveLocation(); // current location is always active for riders
     } else { loadAvailable(); loadDriverRides(); }
   }
 }
@@ -140,6 +141,7 @@ $('#logout-btn').addEventListener('click', async () => {
     try { await api('/driver/offline', { method: 'POST' }); } catch { /* ignore */ }
   }
   stopPresence();
+  stopLiveLocation();
   try { await api('/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
   state.token = null; state.user = null;
   store.clear();
@@ -174,6 +176,10 @@ function setupPresets() {
 // bloquear (é same-origin), não há CORS e o fallback por IP usa o IP real que
 // o servidor enxerga. Se a rede/Leaflet não carregar, cai no modo manual.
 const maps = { ready: false, map: null, markers: {} };
+
+// Live current location, kept always active while the rider uses the app (see
+// startLiveLocation). `coords` biases address search toward the rider's city.
+const geo = { coords: null, watchId: null, started: false };
 
 // Resolve the user's real current position: device GPS first (the true, exact
 // location — needs a secure context: HTTPS or localhost), then the server-side
@@ -220,6 +226,63 @@ async function useCurrentLocation({ silent = false, onlyIfEmpty = false } = {}) 
   setSearchValue('pickup', place.label);
   mapsSetPlace('pickup', place);
   return true;
+}
+
+// Paint the small "location active" status line in the new-ride screen.
+function setGeoStatus(text, kind = '') {
+  const el = $('#geo-status');
+  if (!el) return;
+  el.textContent = text;
+  el.className = `geo-status ${kind}`;
+}
+
+// Keep the current location ALWAYS active while the rider is on the platform.
+// Device GPS is watched continuously (secure context required); if it is
+// denied/unavailable we fall back once to the server-side IP position. The
+// freshest coordinate is kept in `geo.coords` and used to bias address search
+// and to default the pickup. Idempotent: safe to call on every render.
+function startLiveLocation() {
+  if (geo.started) return;
+  geo.started = true;
+  setGeoStatus('📍 Obtendo sua localização atual…');
+
+  const apply = (coords, approx) => {
+    geo.coords = coords;
+    reverseGeocode(coords.lat, coords.lng).then((label) => {
+      setGeoStatus(`📍 Localização ativa${approx ? ' (aproximada)' : ''}: ${label}`, approx ? 'approx' : 'live');
+    });
+    // Default the pickup to the live location while the rider hasn't chosen one.
+    if (pickupIsEmpty()) {
+      reverseGeocode(coords.lat, coords.lng).then((label) => {
+        if (!pickupIsEmpty()) return;
+        setSearchValue('pickup', approx ? `${label} (aprox.)` : label);
+        mapsSetPlace('pickup', { label, lat: coords.lat, lng: coords.lng });
+      });
+    }
+  };
+
+  const useIpOnce = () =>
+    ipPosition().then((ip) => {
+      if (ip) apply({ lat: ip.lat, lng: ip.lng }, true);
+      else setGeoStatus('📍 Localização indisponível — informe origem e destino.', 'err');
+    });
+
+  if (navigator.geolocation) {
+    geo.watchId = navigator.geolocation.watchPosition(
+      (pos) => apply({ lat: pos.coords.latitude, lng: pos.coords.longitude }, false),
+      () => { if (!geo.coords) useIpOnce(); }, // denied/timeout → IP fallback once
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 },
+    );
+  } else {
+    useIpOnce();
+  }
+}
+
+function stopLiveLocation() {
+  if (geo.watchId != null && navigator.geolocation) navigator.geolocation.clearWatch(geo.watchId);
+  geo.watchId = null;
+  geo.coords = null;
+  geo.started = false;
 }
 
 function setupMaps() {
@@ -306,10 +369,13 @@ function renderSuggestions(list, items, onPick) {
   list.hidden = false;
 }
 
-// Autocomplete via our same-origin proxy (server talks to Photon/OSM).
+// Autocomplete via our same-origin proxy (server talks to Photon/ViaCEP).
+// Accepts "rua + setor/bairro" or a CEP; biases results to the live location.
 async function photonSearch(q) {
   try {
-    const res = await fetch(`/api/geo/search?q=${encodeURIComponent(q)}`);
+    let url = `/api/geo/search?q=${encodeURIComponent(q)}`;
+    if (geo.coords) url += `&lat=${geo.coords.lat}&lng=${geo.coords.lng}`;
+    const res = await fetch(url);
     const data = await res.json();
     return Array.isArray(data.places) ? data.places : [];
   } catch { return []; }

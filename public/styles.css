@@ -83,6 +83,15 @@ input:focus, select:focus, button:focus-visible {
 .maps-inputs { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
 .maps-inputs label { position: relative; }
 .addr { width: 100%; }
+.geo-status {
+  font-size: 0.85rem; color: var(--muted); margin-bottom: 10px;
+  padding: 8px 10px; border-radius: 8px; background: var(--surface-2);
+  border: 1px solid var(--border); min-height: 1em;
+}
+.geo-status.live { color: var(--text); border-color: var(--primary); }
+.geo-status.approx { color: var(--text); }
+.geo-status.err { color: var(--danger, #e66); }
+.geo-status:empty { display: none; }
 .form.maps-off .map, .form.maps-off .maps-inputs { display: none; }
 .form.maps-on .manual-inputs { display: none; }
 
