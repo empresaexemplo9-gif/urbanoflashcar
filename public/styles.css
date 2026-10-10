@@ -218,6 +218,9 @@ input:focus, select:focus, button:focus-visible {
   position: fixed; inset: 0; z-index: 20000; display: flex; align-items: center; justify-content: center;
   background: rgba(0,0,0,0.55); padding: 16px;
 }
+/* A class rule beats the UA [hidden] rule, so restore hidden explicitly —
+   otherwise the full-screen overlay stays up and swallows every click. */
+.modal[hidden] { display: none; }
 .modal-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
   width: 100%; max-width: 460px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden;
